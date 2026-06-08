@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import AdminDashboard from './AdminDashboard';import { useState } from "react";
 
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E8C96A";
@@ -20,7 +20,7 @@ const feedVideos = [
   { id: 2, pro: professionals[2], title: "Bridal Glam Tutorial", likes: 9102, comments: 541, caption: "Her wedding day look! She cried happy tears 🤍 #BridalMUA", duration: "1:12" },
   { id: 3, pro: professionals[1], title: "High Fade + Design 🔥", likes: 3299, comments: 189, caption: "This client trusted the process and WOW 🔥 #Barber", duration: "0:45" },
   { id: 4, pro: professionals[4], title: "Mega Volume Lashes 👁️", likes: 6720, comments: 402, caption: "Woke up like this? No. Had me do it 😂 Book now!", duration: "0:33" },
-];
+]; 
 
 const categories = ["All", "Barbers", "Hairstylists", "Makeup", "Nails", "Lashes", "Skincare", "Tattoo"];
 
@@ -952,4 +952,7 @@ export default function StylexApp() {
       {showAuth && <AuthModal mode={authMode} onClose={() => setShowAuth(false)} onAuth={handleAuth} />}
     </div>
   );
+}
+export function Admin() {
+  return <AdminDashboard />;
 }
