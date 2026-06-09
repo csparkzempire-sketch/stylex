@@ -3,11 +3,18 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import AdminDashboard from './AdminDashboard';
 
-const path = window.location.pathname;
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
-if (path === '/admin') {
-  root.render(<AdminDashboard />);
+if (window.location.pathname === '/admin') {
+  root.render(
+    <React.StrictMode>
+      <AdminDashboard />
+    </React.StrictMode>
+  );
 } else {
-  root.render(<App />);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
 }
