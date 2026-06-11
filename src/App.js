@@ -1,4 +1,4 @@
-import AdminDashboard from './AdminDashboard';import { useState } from "react";
+import AdminDashboard from './AdminDashboard_1';import { useState } from "react";
 
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E8C96A";
