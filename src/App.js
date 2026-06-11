@@ -858,7 +858,6 @@ export default function StylexApp() {
           {!user ? (
   <AuthScreen onAuthenticated={(u) => handleAuth("login", u.type, u.name, u.email)} />
 ) : (
-            {!user ? (
               <div style={{ textAlign: "center", padding: 40 }}>
                 <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 700, color: GOLD, marginBottom: 8 }}>STYLEX</div>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>👤</div>
