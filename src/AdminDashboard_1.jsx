@@ -14,8 +14,8 @@ const RED = "#FF5555";
 const BLUE = "#5B9BD5";
 
 // ─── ADMIN CREDENTIALS ───
-const ADMIN_EMAIL = "admin@stylex.ng";
-const ADMIN_PASSWORD = "Stylex@Admin2024";
+const ADMIN_EMAIL = "c.sparkz.empire@gmail.com";
+const ADMIN_PASSWORD = "Ccc777###";
 
 const stats = [
   { label: "Total Users", value: "1,284", change: "+12%", icon: "👥", color: BLUE },
