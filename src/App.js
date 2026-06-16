@@ -1,4 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ─── SUPABASE ───
+const supabase = createClient(
+  "https://utvrujgqzheifblizarw.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0dnJ1amdxemhlaWZibGl6YXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDQ0ODEsImV4cCI6MjA5NzE4MDQ4MX0.nQNZD7ymLv1ikHzklgxeVrXFRDJMA0f46QNAsU-CWBc"
+);
 
 // ─── COLORS ───
 const GOLD = "#C9A84C";
@@ -12,9 +19,8 @@ const TEXT = "#F0EDE8";
 const MUTED = "#888898";
 const GREEN = "#4CAF50";
 const RED = "#FF5555";
-const BLUE = "#5B9BD5";
 
-// ─── DATA ───
+// ─── DEMO DATA ───
 const professionals = [
   { id: 1, name: "Adaeze Okonkwo", handle: "@adaezeglow", category: "Hairstylist", location: "Lagos", avatar: "AO", rating: 4.9, reviews: 128, followers: "12.4K", price: "₦18,000", bio: "Natural hair specialist. Crown jewels only.", tags: ["Braids", "Weave", "Locs"], verified: true, available: true, color: "#C9A84C" },
   { id: 2, name: "Chukwudi Eze", handle: "@chukwudicuts", category: "Barber", location: "Abuja", avatar: "CE", rating: 4.8, reviews: 203, followers: "8.9K", price: "₦5,000", bio: "Precision fades. Sharp lines. Clean finish.", tags: ["Fades", "Beards", "Designs"], verified: true, available: true, color: "#5C8CB5" },
@@ -28,12 +34,12 @@ const feedVideos = [
   { id: 1, pro: professionals[0], title: "Knotless Braids Transformation ✨", likes: 4821, comments: 312, saves: 891, duration: "0:47", gradient: "linear-gradient(135deg, #1a0a2e 0%, #2d1654 100%)", emoji: "👑" },
   { id: 2, pro: professionals[2], title: "Bridal Glam Tutorial 💄", likes: 9102, comments: 541, saves: 1420, duration: "1:12", gradient: "linear-gradient(135deg, #1a0818 0%, #3d1535 100%)", emoji: "💄" },
   { id: 3, pro: professionals[1], title: "Skin Fade + Line Up 🔥", likes: 3156, comments: 201, saves: 432, duration: "0:38", gradient: "linear-gradient(135deg, #080e1a 0%, #112240 100%)", emoji: "✂️" },
-  { id: 4, pro: professionals[4], title: "Mega Volume Lash Set ASMR 👁️", likes: 6881, comments: 422, saves: 1354, duration: "1:28", gradient: "linear-gradient(135deg, #081a0e 0%, #0f3d1f 100%)", emoji: "👁️" },
+  { id: 4, pro: professionals[4], title: "Mega Volume Lash Set 👁️", likes: 6881, comments: 422, saves: 1354, duration: "1:28", gradient: "linear-gradient(135deg, #081a0e 0%, #0f3d1f 100%)", emoji: "👁️" },
   { id: 5, pro: professionals[3], title: "Chrome Ombre Nail Art 💅", likes: 5644, comments: 389, saves: 1102, duration: "2:03", gradient: "linear-gradient(135deg, #0f0a1a 0%, #25154d 100%)", emoji: "💅" },
   { id: 6, pro: professionals[5], title: "Glass Skin Routine ✨", likes: 7203, comments: 548, saves: 2100, duration: "1:45", gradient: "linear-gradient(135deg, #1a0e08 0%, #3d2010 100%)", emoji: "✨" },
 ];
 
-const categories = ["All", "Hair", "Makeup", "Barbing", "Nails", "Lashes", "Tattoo", "Facial"];
+const categories = ["All", "Hair", "Makeup", "Barbing", "Nails", "Lashes", "Facial"];
 const timeSlots = ["9:00 AM", "10:00 AM", "11:00 AM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM"];
 
 // ─── HELPERS ───
@@ -44,57 +50,29 @@ function formatNum(n) {
 
 function Avatar({ initials, size = 40, color = GOLD, style = {} }) {
   return (
-    <div style={{
-      width: size, height: size, borderRadius: "50%",
-      background: `${color}22`, border: `1.5px solid ${color}55`,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: size * 0.32, fontWeight: 700, color,
-      letterSpacing: 1, flexShrink: 0, ...style
-    }}>{initials}</div>
+    <div style={{ width: size, height: size, borderRadius: "50%", background: `${color}22`, border: `1.5px solid ${color}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.32, fontWeight: 700, color, letterSpacing: 1, flexShrink: 0, ...style }}>{initials}</div>
   );
 }
 
 function Badge({ text, color = GOLD }) {
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase",
-      color, border: `1px solid ${color}44`, borderRadius: 4, padding: "2px 7px",
-      background: `${color}11`
-    }}>{text}</span>
-  );
+  return <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color, border: `1px solid ${color}44`, borderRadius: 4, padding: "2px 7px", background: `${color}11` }}>{text}</span>;
 }
 
 function GoldBtn({ children, onClick, style = {}, outline = false, disabled = false }) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{
-      background: disabled ? DARK3 : outline ? "transparent" : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`,
-      color: disabled ? MUTED : outline ? GOLD : "#0A0A0B",
-      border: outline ? `1.5px solid ${GOLD}` : disabled ? `1px solid ${BORDER}` : "none",
-      borderRadius: 10, padding: "10px 22px", fontWeight: 700,
-      fontSize: 13, cursor: disabled ? "not-allowed" : "pointer",
-      letterSpacing: 0.5, transition: "all 0.2s", ...style
-    }}>{children}</button>
+    <button onClick={onClick} disabled={disabled} style={{ background: disabled ? DARK3 : outline ? "transparent" : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: disabled ? MUTED : outline ? GOLD : "#0A0A0B", border: outline ? `1.5px solid ${GOLD}` : disabled ? `1px solid ${BORDER}` : "none", borderRadius: 10, padding: "10px 22px", fontWeight: 700, fontSize: 13, cursor: disabled ? "not-allowed" : "pointer", letterSpacing: 0.5, transition: "all 0.2s", ...style }}>{children}</button>
   );
 }
 
 function Modal({ onClose, children }) {
   return (
-    <div onClick={onClose} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)",
-      zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center",
-      backdropFilter: "blur(4px)"
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: DARK2, border: `1px solid ${BORDER}`,
-        borderRadius: 20, padding: 28, maxWidth: 480, width: "90%",
-        maxHeight: "90vh", overflowY: "auto",
-        boxShadow: `0 0 60px ${GOLD}15`
-      }}>{children}</div>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: DARK2, border: `1px solid ${BORDER}`, borderRadius: 20, padding: 28, maxWidth: 480, width: "90%", maxHeight: "90vh", overflowY: "auto", boxShadow: `0 0 60px ${GOLD}15` }}>{children}</div>
     </div>
   );
 }
 
-// ─── AUTH SCREEN ───
+// ─── INPUT FIELD ───
 function InputField({ label, type = "text", value, onChange, placeholder, error, icon }) {
   const [showPass, setShowPass] = useState(false);
   return (
@@ -105,17 +83,10 @@ function InputField({ label, type = "text", value, onChange, placeholder, error,
         <input
           type={type === "password" ? (showPass ? "text" : "password") : type}
           value={value} onChange={onChange} placeholder={placeholder}
-          style={{
-            width: "100%", background: DARK3,
-            border: `1.5px solid ${error ? RED : BORDER}`,
-            borderRadius: 12, padding: `12px ${type === "password" ? "44px" : "14px"} 12px ${icon ? "42px" : "14px"}`,
-            color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box"
-          }} />
+          style={{ width: "100%", background: DARK3, border: `1.5px solid ${error ? RED : BORDER}`, borderRadius: 12, padding: `12px ${type === "password" ? "44px" : "14px"} 12px ${icon ? "42px" : "14px"}`, color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box" }}
+        />
         {type === "password" && (
-          <button onClick={() => setShowPass(s => !s)} style={{
-            position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
-            background: "none", border: "none", cursor: "pointer", fontSize: 16, color: MUTED
-          }}>{showPass ? "🙈" : "👁️"}</button>
+          <button onClick={() => setShowPass(s => !s)} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: MUTED }}>{showPass ? "🙈" : "👁️"}</button>
         )}
       </div>
       {error && <div style={{ fontSize: 11, color: RED, marginTop: 4 }}>⚠️ {error}</div>}
@@ -123,6 +94,7 @@ function InputField({ label, type = "text", value, onChange, placeholder, error,
   );
 }
 
+// ─── SIGN IN ───
 function SignInForm({ onSwitch, onSuccess }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -130,28 +102,36 @@ function SignInForm({ onSwitch, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [generalError, setGeneralError] = useState("");
 
-  const USERS_DB = [
-    { email: "client@stylex.ng", password: "Client@123", name: "Test Client", type: "client" },
-    { email: "pro@stylex.ng", password: "Pro@123", name: "Test Pro", type: "professional" },
-  ];
-
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const e = {};
     if (!email) e.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(email)) e.email = "Enter a valid email";
     if (!password) e.password = "Password is required";
     if (Object.keys(e).length > 0) { setErrors(e); return; }
+
     setLoading(true);
-    setTimeout(() => {
-      const user = USERS_DB.find(u => u.email === email && u.password === password);
-      if (user) { onSuccess(user); }
-      else {
-        const emailExists = USERS_DB.find(u => u.email === email);
-        if (emailExists) setErrors({ password: "Incorrect password" });
-        else setGeneralError("No account found. Please sign up.");
+    setGeneralError("");
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        if (error.message.includes("Invalid")) setGeneralError("Wrong email or password. Please try again.");
+        else setGeneralError(error.message);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-    }, 1200);
+
+      const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single();
+      onSuccess({
+        id: data.user.id,
+        email: data.user.email,
+        name: profile?.full_name || email.split("@")[0],
+        type: profile?.user_type || "client"
+      });
+    } catch (err) {
+      setGeneralError("Something went wrong. Please try again.");
+    }
+    setLoading(false);
   };
 
   return (
@@ -161,9 +141,7 @@ function SignInForm({ onSwitch, onSuccess }) {
         <p style={{ color: MUTED, fontSize: 13, margin: 0 }}>Sign in to your STYLEX account</p>
       </div>
       {generalError && (
-        <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: RED }}>
-          ⚠️ {generalError}
-        </div>
+        <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: RED }}>⚠️ {generalError}</div>
       )}
       <InputField label="EMAIL ADDRESS" type="email" value={email} onChange={e => { setEmail(e.target.value); setErrors(p => ({ ...p, email: "" })); setGeneralError(""); }} placeholder="Enter your email" error={errors.email} icon="📧" />
       <InputField label="PASSWORD" type="password" value={password} onChange={e => { setPassword(e.target.value); setErrors(p => ({ ...p, password: "" })); }} placeholder="Enter your password" error={errors.password} />
@@ -177,21 +155,18 @@ function SignInForm({ onSwitch, onSuccess }) {
         Don't have an account?{" "}
         <span onClick={onSwitch} style={{ color: GOLD, fontWeight: 700, cursor: "pointer" }}>Create Account</span>
       </div>
-      <div style={{ background: `${GOLD}08`, border: `1px solid ${GOLD}22`, borderRadius: 10, padding: "10px 14px", fontSize: 11, color: MUTED }}>
-        <div style={{ fontWeight: 700, color: GOLD, marginBottom: 4 }}>Demo Login:</div>
-        <div>Client: client@stylex.ng / Client@123</div>
-        <div>Pro: pro@stylex.ng / Pro@123</div>
-      </div>
     </div>
   );
 }
 
+// ─── SIGN UP ───
 function SignUpForm({ onSwitch, onSuccess }) {
   const [step, setStep] = useState(1);
   const [userType, setUserType] = useState("");
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", password: "", confirmPassword: "", category: "", location: "", agreeTerms: false });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [signupError, setSignupError] = useState("");
 
   const update = (field, value) => { setForm(f => ({ ...f, [field]: value })); setErrors(e => ({ ...e, [field]: "" })); };
 
@@ -202,7 +177,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
     if (!form.email) e.email = "Required";
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Invalid email";
     if (!form.phone) e.phone = "Required";
-    else if (form.phone.length < 11) e.phone = "Enter valid phone";
+    else if (form.phone.length < 11) e.phone = "Enter valid Nigerian phone";
     return e;
   };
 
@@ -217,7 +192,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
     return e;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step === 1) {
       if (!userType) { setErrors({ userType: "Please select account type" }); return; }
       setStep(2);
@@ -229,7 +204,35 @@ function SignUpForm({ onSwitch, onSuccess }) {
       const e = validateStep3();
       if (Object.keys(e).length > 0) { setErrors(e); return; }
       setLoading(true);
-      setTimeout(() => { setLoading(false); setStep(4); }, 1500);
+      setSignupError("");
+
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: form.email,
+          password: form.password,
+          options: { data: { full_name: `${form.firstName} ${form.lastName}`, user_type: userType } }
+        });
+
+        if (error) { setSignupError(error.message); setLoading(false); return; }
+
+        if (data.user) {
+          await supabase.from("profiles").insert({
+            id: data.user.id,
+            email: form.email,
+            full_name: `${form.firstName} ${form.lastName}`,
+            user_type: userType,
+            phone: form.phone,
+            location: form.location,
+            category: form.category
+          });
+        }
+
+        setLoading(false);
+        setStep(4);
+      } catch (err) {
+        setSignupError("Something went wrong. Please try again.");
+        setLoading(false);
+      }
     }
   };
 
@@ -255,12 +258,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
             { id: "client", icon: "👤", title: "I'm a Client", desc: "Book beauty professionals", features: ["Browse professionals", "Book appointments", "AI style scanner"] },
             { id: "professional", icon: "✂️", title: "I'm a Professional", desc: "Offer beauty services", features: ["Create profile", "Upload portfolio", "Receive payments"] },
           ].map(type => (
-            <button key={type.id} onClick={() => { setUserType(type.id); setErrors({}); }} style={{
-              background: userType === type.id ? `${GOLD}15` : DARK3,
-              border: `2px solid ${userType === type.id ? GOLD : BORDER}`,
-              borderRadius: 16, padding: "16px", cursor: "pointer", textAlign: "left",
-              width: "100%", marginBottom: 10, transition: "all 0.2s"
-            }}>
+            <button key={type.id} onClick={() => { setUserType(type.id); setErrors({}); }} style={{ background: userType === type.id ? `${GOLD}15` : DARK3, border: `2px solid ${userType === type.id ? GOLD : BORDER}`, borderRadius: 16, padding: "16px", cursor: "pointer", textAlign: "left", width: "100%", marginBottom: 10, transition: "all 0.2s" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
                 <span style={{ fontSize: 24 }}>{type.icon}</span>
                 <div style={{ flex: 1 }}>
@@ -270,9 +268,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
                 <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${userType === type.id ? GOLD : BORDER}`, background: userType === type.id ? GOLD : "none" }} />
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {type.features.map(f => (
-                  <span key={f} style={{ fontSize: 10, color: userType === type.id ? GOLD : MUTED, background: `${userType === type.id ? GOLD : MUTED}11`, borderRadius: 20, padding: "2px 8px" }}>✓ {f}</span>
-                ))}
+                {type.features.map(f => <span key={f} style={{ fontSize: 10, color: userType === type.id ? GOLD : MUTED, background: `${userType === type.id ? GOLD : MUTED}11`, borderRadius: 20, padding: "2px 8px" }}>✓ {f}</span>)}
               </div>
             </button>
           ))}
@@ -319,6 +315,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
           <div style={{ textAlign: "center", marginBottom: 14 }}>
             <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 4px" }}>Secure Your Account 🔐</h2>
           </div>
+          {signupError && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: RED, marginBottom: 10 }}>⚠️ {signupError}</div>}
           <div style={{ marginBottom: 10 }}>
             <InputField label="CREATE PASSWORD" type="password" value={form.password} onChange={e => update("password", e.target.value)} placeholder="Min 8 chars, 1 uppercase, 1 number" error={errors.password} />
             {form.password.length > 0 && (
@@ -348,21 +345,17 @@ function SignUpForm({ onSwitch, onSuccess }) {
           <h2 style={{ color: GOLD, fontWeight: 800, fontSize: 22, margin: "0 0 10px" }}>Account Created!</h2>
           <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.7, marginBottom: 20 }}>
             Welcome to STYLEX, <strong style={{ color: TEXT }}>{form.firstName}</strong>!<br />
-            Verification sent to <strong style={{ color: GOLD }}>{form.email}</strong>
+            Check <strong style={{ color: GOLD }}>{form.email}</strong> to verify your account.
           </p>
-          <GoldBtn onClick={() => onSuccess({ email: form.email, name: form.firstName, type: userType })} style={{ width: "100%", padding: "13px" }}>
-            Go to My Account →
-          </GoldBtn>
+          <GoldBtn onClick={() => onSuccess({ email: form.email, name: form.firstName, type: userType })} style={{ width: "100%", padding: "13px" }}>Go to My Account →</GoldBtn>
         </div>
       )}
 
       {step < 4 && (
         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-          {step > 1 && (
-            <button onClick={() => setStep(s => s - 1)} style={{ flex: 1, background: "none", border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: "13px", color: MUTED, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>← Back</button>
-          )}
+          {step > 1 && <button onClick={() => setStep(s => s - 1)} style={{ flex: 1, background: "none", border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: "13px", color: MUTED, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>← Back</button>}
           <GoldBtn onClick={handleNext} disabled={loading} style={{ flex: 2, padding: "13px" }}>
-            {loading ? "Creating..." : step === 3 ? "Create Account 🚀" : "Continue →"}
+            {loading ? "Please wait..." : step === 3 ? "Create Account 🚀" : "Continue →"}
           </GoldBtn>
         </div>
       )}
@@ -376,6 +369,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
   );
 }
 
+// ─── AUTH SCREEN ───
 function AuthScreen({ onAuthenticated }) {
   const [mode, setMode] = useState("signin");
   return (
@@ -388,24 +382,42 @@ function AuthScreen({ onAuthenticated }) {
         </div>
         {mode === "signin"
           ? <SignInForm onSwitch={() => setMode("signup")} onSuccess={onAuthenticated} />
-          : <SignUpForm onSwitch={() => setMode("signin")} onSuccess={onAuthenticated} />
-        }
+          : <SignUpForm onSwitch={() => setMode("signin")} onSuccess={onAuthenticated} />}
       </div>
     </div>
   );
 }
 
 // ─── BOOKING MODAL ───
-function BookingModal({ pro, onClose }) {
+function BookingModal({ pro, onClose, user }) {
   const [step, setStep] = useState(1);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [selectedService, setSelectedService] = useState(0);
   const [payMethod, setPayMethod] = useState("flutterwave");
+  const [bookingRef, setBookingRef] = useState("");
 
   const today = new Date();
   const days = Array.from({ length: 14 }, (_, i) => { const d = new Date(today); d.setDate(today.getDate() + i); return d; });
   const servicePrice = parseInt(pro.price.replace(/[₦,]/g, "")) + selectedService * 2000;
+
+  const handleConfirmBooking = async () => {
+    const ref = "SX-" + Math.random().toString(36).substr(2, 6).toUpperCase();
+    setBookingRef(ref);
+
+    if (user) {
+      await supabase.from("bookings").insert({
+        client_id: user.id,
+        service: pro.tags[selectedService],
+        date: days[selectedDate]?.toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" }),
+        time: selectedTime,
+        price: Math.round(servicePrice * 1.05),
+        status: "confirmed",
+        reference: ref
+      });
+    }
+    setStep(4);
+  };
 
   return (
     <Modal onClose={onClose}>
@@ -433,11 +445,7 @@ function BookingModal({ pro, onClose }) {
         <div>
           <div style={{ display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none", marginBottom: 18, paddingBottom: 4 }}>
             {days.map((d, i) => (
-              <button key={i} onClick={() => setSelectedDate(i)} style={{
-                flexShrink: 0, width: 52, padding: "10px 0", borderRadius: 12, cursor: "pointer",
-                background: selectedDate === i ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3,
-                border: selectedDate === i ? "none" : `1px solid ${BORDER}`, textAlign: "center"
-              }}>
+              <button key={i} onClick={() => setSelectedDate(i)} style={{ flexShrink: 0, width: 52, padding: "10px 0", borderRadius: 12, cursor: "pointer", background: selectedDate === i ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3, border: selectedDate === i ? "none" : `1px solid ${BORDER}`, textAlign: "center" }}>
                 <div style={{ fontSize: 10, color: selectedDate === i ? "#0A0A0B" : MUTED, fontWeight: 600 }}>{d.toLocaleDateString("en", { weekday: "short" })}</div>
                 <div style={{ fontSize: 17, fontWeight: 800, color: selectedDate === i ? "#0A0A0B" : TEXT }}>{d.getDate()}</div>
               </button>
@@ -446,12 +454,7 @@ function BookingModal({ pro, onClose }) {
           {selectedDate !== null && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 18 }}>
               {timeSlots.map(time => (
-                <button key={time} onClick={() => setSelectedTime(time)} style={{
-                  padding: "9px 0", borderRadius: 10, cursor: "pointer", fontSize: 11, fontWeight: 600,
-                  background: selectedTime === time ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3,
-                  color: selectedTime === time ? "#0A0A0B" : TEXT,
-                  border: selectedTime === time ? "none" : `1px solid ${BORDER}`
-                }}>{time}</button>
+                <button key={time} onClick={() => setSelectedTime(time)} style={{ padding: "9px 0", borderRadius: 10, cursor: "pointer", fontSize: 11, fontWeight: 600, background: selectedTime === time ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3, color: selectedTime === time ? "#0A0A0B" : TEXT, border: selectedTime === time ? "none" : `1px solid ${BORDER}` }}>{time}</button>
               ))}
             </div>
           )}
@@ -463,12 +466,7 @@ function BookingModal({ pro, onClose }) {
         <div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
             {pro.tags.map((tag, i) => (
-              <button key={tag} onClick={() => setSelectedService(i)} style={{
-                background: selectedService === i ? `${GOLD}15` : DARK3,
-                border: selectedService === i ? `1.5px solid ${GOLD}` : `1px solid ${BORDER}`,
-                borderRadius: 12, padding: "14px 16px", cursor: "pointer",
-                display: "flex", justifyContent: "space-between", alignItems: "center"
-              }}>
+              <button key={tag} onClick={() => setSelectedService(i)} style={{ background: selectedService === i ? `${GOLD}15` : DARK3, border: selectedService === i ? `1.5px solid ${GOLD}` : `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ textAlign: "left" }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{tag}</div>
                   <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{45 + i * 15} minutes</div>
@@ -487,17 +485,8 @@ function BookingModal({ pro, onClose }) {
       {step === 3 && (
         <div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
-            {[
-              { id: "flutterwave", label: "Flutterwave", sub: "Card, Bank Transfer, USSD" },
-              { id: "paystack", label: "Paystack", sub: "Debit/Credit Card" },
-              { id: "wallet", label: "STYLEX Wallet", sub: "Balance: ₦0.00" },
-            ].map(method => (
-              <button key={method.id} onClick={() => setPayMethod(method.id)} style={{
-                background: payMethod === method.id ? `${GOLD}15` : DARK3,
-                border: payMethod === method.id ? `1.5px solid ${GOLD}` : `1px solid ${BORDER}`,
-                borderRadius: 12, padding: "14px 16px", cursor: "pointer",
-                display: "flex", justifyContent: "space-between", alignItems: "center"
-              }}>
+            {[{ id: "flutterwave", label: "Flutterwave", sub: "Card, Bank Transfer, USSD" }, { id: "paystack", label: "Paystack", sub: "Debit/Credit Card" }, { id: "wallet", label: "STYLEX Wallet", sub: "Balance: ₦0.00" }].map(method => (
+              <button key={method.id} onClick={() => setPayMethod(method.id)} style={{ background: payMethod === method.id ? `${GOLD}15` : DARK3, border: payMethod === method.id ? `1.5px solid ${GOLD}` : `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ textAlign: "left" }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{method.label}</div>
                   <div style={{ fontSize: 11, color: MUTED }}>{method.sub}</div>
@@ -522,7 +511,7 @@ function BookingModal({ pro, onClose }) {
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <GoldBtn onClick={() => setStep(2)} outline style={{ flex: 1 }}>← Back</GoldBtn>
-            <GoldBtn onClick={() => setStep(4)} style={{ flex: 2 }}>Pay Now 💳</GoldBtn>
+            <GoldBtn onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm Booking ✅</GoldBtn>
           </div>
         </div>
       )}
@@ -531,12 +520,10 @@ function BookingModal({ pro, onClose }) {
         <div style={{ textAlign: "center", padding: "10px 0" }}>
           <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
           <h3 style={{ color: GOLD, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Booking Confirmed!</h3>
-          <p style={{ color: MUTED, fontSize: 13, marginBottom: 20, lineHeight: 1.7 }}>
-            Your appointment with <strong style={{ color: TEXT }}>{pro.name}</strong> is confirmed.
-          </p>
+          <p style={{ color: MUTED, fontSize: 13, marginBottom: 20, lineHeight: 1.7 }}>Your appointment with <strong style={{ color: TEXT }}>{pro.name}</strong> is confirmed.</p>
           <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 20, border: `1px solid ${BORDER}` }}>
             <div style={{ fontSize: 11, color: MUTED, marginBottom: 6, letterSpacing: 1.5 }}>BOOKING REFERENCE</div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: GOLD, letterSpacing: 3 }}>SX-{Math.random().toString(36).substr(2, 6).toUpperCase()}</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: GOLD, letterSpacing: 3 }}>{bookingRef}</div>
           </div>
           <GoldBtn onClick={onClose} style={{ width: "100%" }}>Done 🎉</GoldBtn>
         </div>
@@ -546,7 +533,7 @@ function BookingModal({ pro, onClose }) {
 }
 
 // ─── HOME SCREEN ───
-function HomeScreen({ user, onBook, onProfile }) {
+function HomeScreen({ user, onProfile }) {
   const [activeCategory, setActiveCategory] = useState("All");
   const [liked, setLiked] = useState({});
   const [saved, setSaved] = useState({});
@@ -569,23 +556,17 @@ function HomeScreen({ user, onBook, onProfile }) {
 
       <div style={{ display: "flex", gap: 8, padding: "14px 20px", overflowX: "auto", scrollbarWidth: "none" }}>
         {categories.map(cat => (
-          <button key={cat} onClick={() => setActiveCategory(cat)} style={{
-            background: activeCategory === cat ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : `${GOLD}11`,
-            color: activeCategory === cat ? "#0A0A0B" : MUTED,
-            border: activeCategory === cat ? "none" : `1px solid ${BORDER}`,
-            borderRadius: 20, padding: "7px 16px", fontSize: 12, fontWeight: 600,
-            cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0
-          }}>{cat}</button>
+          <button key={cat} onClick={() => setActiveCategory(cat)} style={{ background: activeCategory === cat ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : `${GOLD}11`, color: activeCategory === cat ? "#0A0A0B" : MUTED, border: activeCategory === cat ? "none" : `1px solid ${BORDER}`, borderRadius: 20, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{cat}</button>
         ))}
       </div>
 
       <div style={{ padding: "0 20px 100px" }}>
-        {filtered.map((item, i) => (
+        {filtered.map((item) => (
           <div key={item.id} style={{ borderRadius: 20, overflow: "hidden", marginBottom: 20, border: `1px solid ${BORDER}` }}>
             <div style={{ background: item.gradient, height: 260, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={() => onProfile(item.pro)}>
               <div style={{ fontSize: 64, opacity: 0.4 }}>{item.emoji}</div>
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.8))" }} />
-              <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 54, height: 54, borderRadius: "50%", background: "rgba(0,0,0,0.5)", border: `2px solid ${GOLD}88`, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+              <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 54, height: 54, borderRadius: "50%", background: "rgba(0,0,0,0.5)", border: `2px solid ${GOLD}88`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ color: GOLD, fontSize: 18, marginLeft: 4 }}>▶</span>
               </div>
               <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: TEXT }}>{item.duration}</div>
@@ -605,10 +586,7 @@ function HomeScreen({ user, onBook, onProfile }) {
                   { icon: "💬", count: item.comments, key: "comment" },
                   { icon: saved[item.id] ? "🔖" : "📎", count: item.saves + (saved[item.id] ? 1 : 0), key: "save" },
                 ].map(action => (
-                  <button key={action.key} onClick={() => {
-                    if (action.key === "like") setLiked(p => ({ ...p, [item.id]: !p[item.id] }));
-                    if (action.key === "save") setSaved(p => ({ ...p, [item.id]: !p[item.id] }));
-                  }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
+                  <button key={action.key} onClick={() => { if (action.key === "like") setLiked(p => ({ ...p, [item.id]: !p[item.id] })); if (action.key === "save") setSaved(p => ({ ...p, [item.id]: !p[item.id] })); }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
                     <span style={{ fontSize: 16 }}>{action.icon}</span>{formatNum(action.count)}
                   </button>
                 ))}
@@ -618,13 +596,13 @@ function HomeScreen({ user, onBook, onProfile }) {
           </div>
         ))}
       </div>
-      {bookModal && <BookingModal pro={bookModal} onClose={() => setBookModal(null)} />}
+      {bookModal && <BookingModal pro={bookModal} user={user} onClose={() => setBookModal(null)} />}
     </div>
   );
 }
 
 // ─── EXPLORE SCREEN ───
-function ExploreScreen({ onProfile }) {
+function ExploreScreen({ onProfile, user }) {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("All");
   const [bookModal, setBookModal] = useState(null);
@@ -640,18 +618,11 @@ function ExploreScreen({ onProfile }) {
       <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 22, marginBottom: 16 }}>Discover Professionals</h2>
       <div style={{ position: "relative", marginBottom: 16 }}>
         <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 16 }}>🔍</span>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, category or city..."
-          style={{ width: "100%", background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 16px 12px 40px", color: TEXT, fontSize: 14, boxSizing: "border-box", outline: "none" }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, category or city..." style={{ width: "100%", background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 16px 12px 40px", color: TEXT, fontSize: 14, boxSizing: "border-box", outline: "none" }} />
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", scrollbarWidth: "none" }}>
         {["All", ...new Set(professionals.map(p => p.category))].map(cat => (
-          <button key={cat} onClick={() => setSelectedCat(cat)} style={{
-            background: selectedCat === cat ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : `${GOLD}11`,
-            color: selectedCat === cat ? "#0A0A0B" : MUTED,
-            border: selectedCat === cat ? "none" : `1px solid ${BORDER}`,
-            borderRadius: 20, padding: "7px 16px", fontSize: 12, fontWeight: 600,
-            cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0
-          }}>{cat}</button>
+          <button key={cat} onClick={() => setSelectedCat(cat)} style={{ background: selectedCat === cat ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : `${GOLD}11`, color: selectedCat === cat ? "#0A0A0B" : MUTED, border: selectedCat === cat ? "none" : `1px solid ${BORDER}`, borderRadius: 20, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{cat}</button>
         ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
@@ -676,9 +647,7 @@ function ExploreScreen({ onProfile }) {
               </div>
               <p style={{ fontSize: 12, color: `${TEXT}99`, margin: "0 0 10px", lineHeight: 1.6 }}>{pro.bio}</p>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                {pro.tags.map(tag => (
-                  <span key={tag} style={{ fontSize: 10, color: pro.color, background: `${pro.color}15`, border: `1px solid ${pro.color}33`, borderRadius: 4, padding: "2px 8px" }}>{tag}</span>
-                ))}
+                {pro.tags.map(tag => <span key={tag} style={{ fontSize: 10, color: pro.color, background: `${pro.color}15`, border: `1px solid ${pro.color}33`, borderRadius: 4, padding: "2px 8px" }}>{tag}</span>)}
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `1px solid ${BORDER}`, paddingTop: 10, marginBottom: 12 }}>
                 <div>
@@ -698,100 +667,25 @@ function ExploreScreen({ onProfile }) {
           </div>
         ))}
       </div>
-      {bookModal && <BookingModal pro={bookModal} onClose={() => setBookModal(null)} />}
-    </div>
-  );
-}
-
-// ─── PROFESSIONAL PROFILE ───
-function ProProfileScreen({ pro, onBack }) {
-  const [tab, setTab] = useState("portfolio");
-  const [following, setFollowing] = useState(false);
-  const [showBook, setShowBook] = useState(false);
-  const [showUpload, setShowUpload] = useState(false);
-  const [showEditServices, setShowEditServices] = useState(false);
-
-  return (
-    <div style={{ minHeight: "100vh", background: DARK, fontFamily: "'Helvetica Neue', Arial, sans-serif", paddingBottom: 100 }}>
-      <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>← Back</button>
-      </div>
-      <div style={{ margin: "0 20px 20px", borderRadius: 20, overflow: "hidden", background: `linear-gradient(135deg, ${pro.color}22, ${DARK3})`, border: `1px solid ${pro.color}44`, padding: 24 }}>
-        <div style={{ display: "flex", gap: 18, alignItems: "flex-start" }}>
-          <Avatar initials={pro.avatar} size={72} color={pro.color} />
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 20, margin: 0 }}>{pro.name}</h2>
-              {pro.verified && <span style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 6, padding: "2px 8px", fontSize: 10, color: GOLD, fontWeight: 700 }}>✓ VERIFIED</span>}
-            </div>
-            <div style={{ color: MUTED, fontSize: 13, marginBottom: 8 }}>{pro.handle} · {pro.location}</div>
-            <Badge text={pro.category} color={pro.color} />
-            <p style={{ color: `${TEXT}99`, fontSize: 13, margin: "10px 0 12px", lineHeight: 1.6 }}>{pro.bio}</p>
-            <div style={{ display: "flex", gap: 20, marginBottom: 14 }}>
-              {[{ label: "Followers", val: pro.followers }, { label: "Reviews", val: pro.reviews }, { label: "Rating", val: `${pro.rating}★` }].map(s => (
-                <div key={s.label}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>{s.val}</div>
-                  <div style={{ fontSize: 11, color: MUTED }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <GoldBtn onClick={() => setFollowing(f => !f)} outline={!following} style={{ fontSize: 12, padding: "8px 18px" }}>
-                {following ? "✓ Following" : "+ Follow"}
-              </GoldBtn>
-              <GoldBtn onClick={() => setShowBook(true)} style={{ fontSize: 12, padding: "8px 18px" }}>Book Now</GoldBtn>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ padding: "0 20px", display: "flex", gap: 0, borderBottom: `1px solid ${BORDER}`, marginBottom: 16 }}>
-        {["portfolio", "reviews"].map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
-            flex: 1, background: "none", border: "none", cursor: "pointer",
-            padding: "12px 0", fontWeight: 600, fontSize: 13,
-            color: tab === t ? GOLD : MUTED,
-            borderBottom: tab === t ? `2px solid ${GOLD}` : "2px solid transparent",
-            textTransform: "capitalize"
-          }}>{t}</button>
-        ))}
-      </div>
-
-      {tab === "portfolio" && (
-        <div style={{ padding: "0 20px 100px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          {["✨", "👑", "💫", "🌟", "💎", "🎨"].map((emoji, i) => (
-            <div key={i} style={{ aspectRatio: "1", borderRadius: 12, background: `linear-gradient(135deg, ${pro.color}22, ${DARK3})`, border: `1px solid ${pro.color}33`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, cursor: "pointer" }}>
-              {emoji}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === "reviews" && (
-        <div style={{ padding: "0 20px 100px", display: "flex", flexDirection: "column", gap: 14 }}>
-          {[
-            { user: "Chioma A.", rating: 5, text: "Absolutely flawless! Best in the business.", date: "2 days ago" },
-            { user: "Ngozi M.", rating: 5, text: "Professional and talented. Will definitely rebook!", date: "1 week ago" },
-          ].map((rev, i) => (
-            <div key={i} style={{ background: CARD, borderRadius: 14, padding: 16, border: `1px solid ${BORDER}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontWeight: 600, fontSize: 13, color: TEXT }}>{rev.user}</span>
-                <span style={{ fontSize: 11, color: MUTED }}>{rev.date}</span>
-              </div>
-              <div style={{ color: GOLD, fontSize: 13, marginBottom: 6 }}>{"★".repeat(rev.rating)}</div>
-              <p style={{ fontSize: 13, color: `${TEXT}88`, margin: 0 }}>{rev.text}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {showBook && <BookingModal pro={pro} onClose={() => setShowBook(false)} />}
+      {bookModal && <BookingModal pro={bookModal} user={user} onClose={() => setBookModal(null)} />}
     </div>
   );
 }
 
 // ─── BOOKINGS SCREEN ───
 function BookingsScreen({ user, onLogin }) {
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      supabase.from("bookings").select("*").eq("client_id", user.id).order("created_at", { ascending: false })
+        .then(({ data }) => { setBookings(data || []); setLoading(false); });
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
+
   if (!user) {
     return (
       <div style={{ minHeight: "100vh", background: DARK, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -805,43 +699,32 @@ function BookingsScreen({ user, onLogin }) {
     );
   }
 
-  const upcoming = [
-    { pro: professionals[0], service: "Box Braids", date: "Mon, 12 Jun", time: "10:00 AM", price: "₦18,900", status: "confirmed", ref: "SX-4A8B2C" },
-    { pro: professionals[2], service: "Bridal Makeup", date: "Sat, 17 Jun", time: "2:00 PM", price: "₦26,250", status: "pending", ref: "SX-9F3D7E" },
-  ];
-
   return (
     <div style={{ minHeight: "100vh", background: DARK, padding: "20px 20px 100px" }}>
       <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 22, marginBottom: 20 }}>My Bookings</h2>
-      <h3 style={{ color: MUTED, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, marginBottom: 12 }}>UPCOMING</h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {upcoming.map((b, i) => (
-          <div key={i} style={{ background: CARD, borderRadius: 16, padding: 18, border: `1px solid ${BORDER}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <Avatar initials={b.pro.avatar} size={42} color={b.pro.color} />
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{b.pro.name}</div>
-                  <div style={{ fontSize: 12, color: MUTED }}>{b.service}</div>
-                </div>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 40, color: MUTED }}>Loading...</div>
+      ) : bookings.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>📅</div>
+          <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 18, marginBottom: 8 }}>No bookings yet</h3>
+          <p style={{ color: MUTED, fontSize: 13 }}>Your confirmed bookings will appear here</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {bookings.map((b, i) => (
+            <div key={i} style={{ background: CARD, borderRadius: 16, padding: 18, border: `1px solid ${BORDER}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{b.service}</div>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 6, background: `${GREEN}22`, color: GREEN, border: `1px solid ${GREEN}44` }}>{b.status?.toUpperCase()}</span>
               </div>
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, padding: "4px 10px", borderRadius: 6, background: b.status === "confirmed" ? `${GREEN}22` : `${GOLD}22`, color: b.status === "confirmed" ? GREEN : GOLD, border: `1px solid ${b.status === "confirmed" ? GREEN : GOLD}44` }}>{b.status.toUpperCase()}</span>
+              <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>📅 {b.date} · 🕐 {b.time}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: GOLD }}>₦{b.price?.toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 6, fontFamily: "monospace" }}>{b.reference}</div>
             </div>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12, color: MUTED }}>📅 <span style={{ color: TEXT }}>{b.date}</span></span>
-              <span style={{ fontSize: 12, color: MUTED }}>🕐 <span style={{ color: TEXT }}>{b.time}</span></span>
-              <span style={{ fontSize: 12, color: MUTED }}>💰 <span style={{ color: GOLD, fontWeight: 700 }}>{b.price}</span></span>
-            </div>
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: MUTED, fontFamily: "monospace" }}>{b.ref}</span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, padding: "6px 12px", cursor: "pointer", fontSize: 11 }}>Reschedule</button>
-                <button style={{ background: "none", border: `1px solid #ff444444`, borderRadius: 8, color: "#ff6666", padding: "6px 12px", cursor: "pointer", fontSize: 11 }}>Cancel</button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -860,7 +743,7 @@ function AIScannerModal({ onClose }) {
 
   const results = {
     face: { type: "Oval Face Shape", desc: "Most versatile shape! Almost any hairstyle suits you.", styles: ["Beach Waves", "Bob Cut", "Pixie Cut", "Long Layers"] },
-    hair: { type: "Type 4C Natural Hair", desc: "Tightly coiled hair thrives with moisture and protective styles.", styles: ["Box Braids", "Loc Extensions", "TWA", "Bantu Knots"] },
+    hair: { type: "Type 4C Natural Hair", desc: "Tightly coiled hair that thrives with moisture.", styles: ["Box Braids", "Loc Extensions", "TWA", "Bantu Knots"] },
     nails: { type: "Short Oval Nails", desc: "Perfect for gel extensions and minimalist nail art.", styles: ["French Tips", "Ombre Gel", "Chrome Finish", "3D Florals"] },
     skin: { type: "Deep Brown Skin Tone", desc: "Gold, bronze and deep berry shades complement you best.", styles: ["Bronze Glam", "Nude Glam", "Bold Lip", "Dewy Skin"] },
   };
@@ -917,9 +800,7 @@ function ProfileScreen({ user, onAuth, onLogout }) {
   const [showScanner, setShowScanner] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
 
-  if (!user) {
-    return <AuthScreen onAuthenticated={onAuth} />;
-  }
+  if (!user) return <AuthScreen onAuthenticated={onAuth} />;
 
   const isPro = user.type === "professional";
 
@@ -957,7 +838,7 @@ function ProfileScreen({ user, onAuth, onLogout }) {
               <div style={{ fontSize: 36 }}>🤖</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 800, fontSize: 14, color: TEXT, marginBottom: 3 }}>AI Style Scanner ✨</div>
-                <div style={{ fontSize: 12, color: `${TEXT}88` }}>Scan your face, hair or nails for personalized style recommendations</div>
+                <div style={{ fontSize: 12, color: `${TEXT}88` }}>Scan your face, hair or nails for personalized recommendations</div>
               </div>
               <div style={{ background: `linear-gradient(135deg, #7C5CB5, #B56C8A)`, borderRadius: 10, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: TEXT, flexShrink: 0 }}>Scan Now</div>
             </div>
@@ -985,11 +866,7 @@ function ProfileScreen({ user, onAuth, onLogout }) {
           { icon: "🔒", label: "Security", sub: "Password & 2FA" },
           { icon: "🚪", label: "Sign Out", sub: "Log out of STYLEX", danger: true },
         ].map((item, i) => (
-          <div key={i} onClick={() => item.label === "Sign Out" && onLogout()} style={{
-            background: CARD, borderRadius: 14, padding: "16px 18px", marginBottom: 10,
-            border: `1px solid ${item.danger ? "#ff444433" : BORDER}`,
-            display: "flex", alignItems: "center", gap: 14, cursor: "pointer"
-          }}>
+          <div key={i} onClick={async () => { if (item.label === "Sign Out") { await supabase.auth.signOut(); onLogout(); } }} style={{ background: CARD, borderRadius: 14, padding: "16px 18px", marginBottom: 10, border: `1px solid ${item.danger ? "#ff444433" : BORDER}`, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
             <span style={{ fontSize: 20 }}>{item.icon}</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 14, color: item.danger ? "#ff6666" : TEXT }}>{item.label}</div>
@@ -1001,7 +878,6 @@ function ProfileScreen({ user, onAuth, onLogout }) {
       </div>
 
       {showScanner && <AIScannerModal onClose={() => setShowScanner(false)} />}
-
       {showUpload && (
         <Modal onClose={() => setShowUpload(false)}>
           <div style={{ textAlign: "center", padding: "20px 0" }}>
@@ -1020,7 +896,6 @@ function ProfileScreen({ user, onAuth, onLogout }) {
           </div>
         </Modal>
       )}
-
       {isPro && (
         <div style={{ position: "fixed", bottom: 80, right: 20, zIndex: 200 }}>
           <button onClick={() => setShowUpload(true)} style={{ width: 60, height: 60, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, boxShadow: `0 4px 20px ${GOLD}66` }}>+</button>
@@ -1031,11 +906,106 @@ function ProfileScreen({ user, onAuth, onLogout }) {
   );
 }
 
+// ─── PRO PROFILE ───
+function ProProfileScreen({ pro, onBack, user }) {
+  const [tab, setTab] = useState("portfolio");
+  const [following, setFollowing] = useState(false);
+  const [showBook, setShowBook] = useState(false);
+
+  return (
+    <div style={{ minHeight: "100vh", background: DARK, fontFamily: "'Helvetica Neue', Arial, sans-serif", paddingBottom: 100 }}>
+      <div style={{ padding: "16px 20px" }}>
+        <button onClick={onBack} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>← Back</button>
+      </div>
+      <div style={{ margin: "0 20px 20px", borderRadius: 20, background: `linear-gradient(135deg, ${pro.color}22, ${DARK3})`, border: `1px solid ${pro.color}44`, padding: 24 }}>
+        <div style={{ display: "flex", gap: 18, alignItems: "flex-start" }}>
+          <Avatar initials={pro.avatar} size={72} color={pro.color} />
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 20, margin: 0 }}>{pro.name}</h2>
+              {pro.verified && <span style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 6, padding: "2px 8px", fontSize: 10, color: GOLD, fontWeight: 700 }}>✓ VERIFIED</span>}
+            </div>
+            <div style={{ color: MUTED, fontSize: 13, marginBottom: 8 }}>{pro.handle} · {pro.location}</div>
+            <Badge text={pro.category} color={pro.color} />
+            <p style={{ color: `${TEXT}99`, fontSize: 13, margin: "10px 0 12px", lineHeight: 1.6 }}>{pro.bio}</p>
+            <div style={{ display: "flex", gap: 20, marginBottom: 14 }}>
+              {[{ label: "Followers", val: pro.followers }, { label: "Reviews", val: pro.reviews }, { label: "Rating", val: `${pro.rating}★` }].map(s => (
+                <div key={s.label}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>{s.val}</div>
+                  <div style={{ fontSize: 11, color: MUTED }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <GoldBtn onClick={() => setFollowing(f => !f)} outline={!following} style={{ fontSize: 12, padding: "8px 18px" }}>{following ? "✓ Following" : "+ Follow"}</GoldBtn>
+              <GoldBtn onClick={() => setShowBook(true)} style={{ fontSize: 12, padding: "8px 18px" }}>Book Now</GoldBtn>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: "0 20px", display: "flex", gap: 0, borderBottom: `1px solid ${BORDER}`, marginBottom: 16 }}>
+        {["portfolio", "reviews"].map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", padding: "12px 0", fontWeight: 600, fontSize: 13, color: tab === t ? GOLD : MUTED, borderBottom: tab === t ? `2px solid ${GOLD}` : "2px solid transparent", textTransform: "capitalize" }}>{t}</button>
+        ))}
+      </div>
+
+      {tab === "portfolio" && (
+        <div style={{ padding: "0 20px 100px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          {["✨", "👑", "💫", "🌟", "💎", "🎨"].map((emoji, i) => (
+            <div key={i} style={{ aspectRatio: "1", borderRadius: 12, background: `linear-gradient(135deg, ${pro.color}22, ${DARK3})`, border: `1px solid ${pro.color}33`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, cursor: "pointer" }}>{emoji}</div>
+          ))}
+        </div>
+      )}
+
+      {tab === "reviews" && (
+        <div style={{ padding: "0 20px 100px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {[{ user: "Chioma A.", rating: 5, text: "Absolutely flawless! Best in the business.", date: "2 days ago" }, { user: "Ngozi M.", rating: 5, text: "Professional and talented. Will rebook!", date: "1 week ago" }].map((rev, i) => (
+            <div key={i} style={{ background: CARD, borderRadius: 14, padding: 16, border: `1px solid ${BORDER}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, fontSize: 13, color: TEXT }}>{rev.user}</span>
+                <span style={{ fontSize: 11, color: MUTED }}>{rev.date}</span>
+              </div>
+              <div style={{ color: GOLD, fontSize: 13, marginBottom: 6 }}>{"★".repeat(rev.rating)}</div>
+              <p style={{ fontSize: 13, color: `${TEXT}88`, margin: 0 }}>{rev.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {showBook && <BookingModal pro={pro} user={user} onClose={() => setShowBook(false)} />}
+    </div>
+  );
+}
+
 // ─── MAIN APP ───
 export default function StylexApp() {
   const [activeTab, setActiveTab] = useState("home");
   const [user, setUser] = useState(null);
   const [viewingPro, setViewingPro] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        supabase.from("profiles").select("*").eq("id", session.user.id).single()
+          .then(({ data: profile }) => {
+            setUser({
+              id: session.user.id,
+              email: session.user.email,
+              name: profile?.full_name || session.user.email.split("@")[0],
+              type: profile?.user_type || "client"
+            });
+          });
+      }
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) setUser(null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleAuth = (userData) => {
     setUser(userData);
@@ -1054,44 +1024,24 @@ export default function StylexApp() {
     { id: "profile", label: "Profile", icon: "👤" },
   ];
 
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", background: DARK, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 4, color: GOLD, fontFamily: "Georgia, serif", marginBottom: 16 }}>STYLEX</div>
+          <div style={{ color: MUTED, fontSize: 13 }}>Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
   if (viewingPro) {
     return (
       <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight: "100vh", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-        <ProProfileScreen pro={viewingPro} onBack={() => setViewingPro(null)} />
+        <ProProfileScreen pro={viewingPro} user={user} onBack={() => setViewingPro(null)} />
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight: "100vh", position: "relative", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-      {activeTab === "home" && <HomeScreen user={user} onBook={() => {}} onProfile={pro => setViewingPro(pro)} />}
-      {activeTab === "explore" && <ExploreScreen onProfile={pro => setViewingPro(pro)} />}
-      {activeTab === "bookings" && <BookingsScreen user={user} onLogin={() => setActiveTab("profile")} />}
-      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} />}
-
-      <div style={{
-        position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
-        width: "100%", maxWidth: 480,
-        background: `${DARK2}f5`, backdropFilter: "blur(20px)",
-        borderTop: `1px solid ${BORDER}`,
-        display: "flex", padding: "8px 0 16px", zIndex: 200
-      }}>
-        {navItems.map(item => {
-          const active = activeTab === item.id;
-          return (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
-              flex: 1, background: "none", border: "none", cursor: "pointer",
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0"
-            }}>
-              <span style={{ fontSize: 20, opacity: active ? 1 : 0.4 }}>{item.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? GOLD : MUTED }}>
-                {item.label}
-              </span>
-              {active && <div style={{ width: 18, height: 2, borderRadius: 1, background: GOLD }} />}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+    <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight:
