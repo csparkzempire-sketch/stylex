@@ -19,8 +19,8 @@ const GREEN = "#4CAF50";
 const RED = "#FF5555";
 const BLUE = "#5B9BD5";
 
-const ADMIN_EMAIL = "admin@stylex.ng";
-const ADMIN_PASSWORD = "Stylex@Admin2024";
+const ADMIN_EMAIL = "c.sparkz.empire@gmail.com";
+const ADMIN_PASSWORD = "Ccc777###";
 
 function StatusBadge({ status }) {
   const colors = {
