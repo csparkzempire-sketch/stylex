@@ -1046,4 +1046,23 @@ export default function StylexApp() {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight:
+    <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight:"100vh", position: "relative", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
+      {activeTab === "home" && <HomeScreen user={user} onProfile={pro => setViewingPro(pro)} />}
+      {activeTab === "explore" && <ExploreScreen user={user} onProfile={pro => setViewingPro(pro)} />}
+      {activeTab === "bookings" && <BookingsScreen user={user} onLogin={() => setActiveTab("profile")} />}
+      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} />}
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: `${DARK2}f5`, backdropFilter: "blur(20px)", borderTop: `1px solid ${BORDER}`, display: "flex", padding: "8px 0 16px", zIndex: 200 }}>
+        {navItems.map(item => {
+          const active = activeTab === item.id;
+          return (
+            <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
+              <span style={{ fontSize: 20, opacity: active ? 1 : 0.4 }}>{item.icon}</span>
+              <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? GOLD : MUTED }}>{item.label}</span>
+              {active && <div style={{ width: 18, height: 2, borderRadius: 1, background: GOLD }} />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
