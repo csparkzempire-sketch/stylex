@@ -980,6 +980,78 @@ function ProProfileScreen({ pro, onBack, user }) {
 }
 
 // ─── MAIN APP ───
+function StylexAssistant() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: "Hi! I'm the Stylex Assistant. Ask me about bookings, services, or how Stylex works!" }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const userMessage = { role: 'user', content: input };
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages })
+      });
+      const data = await response.json();
+      const reply = data.content[0].text;
+      setMessages([...newMessages, { role: 'assistant', content: reply }]);
+    } catch (error) {
+      setMessages([...newMessages, { role: 'assistant', content: "Sorry, I'm having trouble connecting. Please try again." }]);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1000 }}>
+      {isOpen && (
+        <div style={{ width: 320, height: 420, background: '#0a0a0a', border: '2px solid #d4af37', borderRadius: 12, display: 'flex', flexDirection: 'column', marginBottom: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          <div style={{ background: '#d4af37', color: '#000', padding: 12, borderRadius: '10px 10px 0 0', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Stylex Assistant</span>
+            <span onClick={() => setIsOpen(false)} style={{ cursor: 'pointer' }}>✕</span>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+            {messages.map((msg, i) => (
+              <div key={i} style={{ marginBottom: 8, textAlign: msg.role === 'user' ? 'right' : 'left' }}>
+                <span style={{ background: msg.role === 'user' ? '#d4af37' : '#222', color: msg.role === 'user' ? '#000' : '#fff', padding: '6px 10px', borderRadius: 8, display: 'inline-block', maxWidth: '80%', fontSize: 14 }}>
+                  {msg.content}
+                </span>
+              </div>
+            ))}
+            {loading && <div style={{ color: '#888', fontSize: 13 }}>Typing...</div>}
+          </div>
+          <div style={{ display: 'flex', padding: 8, borderTop: '1px solid #333' }}>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+              placeholder="Ask something..."
+              style={{ flex: 1, padding: 8, borderRadius: 6, border: 'none', marginRight: 8 }}
+            />
+            <button onClick={sendMessage} style={{ background: '#d4af37', border: 'none', borderRadius: 6, padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer' }}>
+              Send
+            </button>
+          </div>
+        </div>
+      )}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ width: 56, height: 56, borderRadius: '50%', background: '#d4af37', border: 'none', fontSize: 24, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+      >
+        💬
+      </button>
+    </div>
+  );
+}
 export default function StylexApp() {
   const [activeTab, setActiveTab] = useState("home");
   const [user, setUser] = useState(null);
@@ -1033,6 +1105,7 @@ export default function StylexApp() {
           <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 4, color: GOLD, fontFamily: "Georgia, serif", marginBottom: 16 }}>STYLEX</div>
           <div style={{ color: MUTED, fontSize: 13 }}>Loading...</div>
         </div>
+        <StylexAssistant />
       </div>
     );
   }
