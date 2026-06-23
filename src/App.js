@@ -1105,7 +1105,7 @@ export default function StylexApp() {
           <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 4, color: GOLD, fontFamily: "Georgia, serif", marginBottom: 16 }}>STYLEX</div>
           <div style={{ color: MUTED, fontSize: 13 }}>Loading...</div>
         </div>
-        <StylexAssistant />
+       
       </div>
     );
   }
@@ -1136,6 +1136,7 @@ export default function StylexApp() {
           );
         })}
       </div>
+      <StylexAssistant />
     </div>
   );
 }
