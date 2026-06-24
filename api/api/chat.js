@@ -3,14 +3,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'API key not configured in Vercel' });
+  }
+
   const { messages } = req.body;
 
-  const STYLEX_IDENTITY = `You are the Stylex Assistant, a helpful customer support 
-chatbot for Stylex, a beauty marketplace app connecting clients with beauty 
-professionals. Help users with booking questions, finding services, and general 
-app guidance. Be friendly, concise, and professional. If asked something you 
-don't know about their specific account, suggest they check their bookings page 
-or contact support.`;
+  const STYLEX_IDENTITY = `You are the Stylex Assistant, a helpful customer support chatbot for Stylex, a beauty marketplace app connecting clients with beauty professionals. Help users with booking questions, finding services, and general app guidance. Be friendly, concise, and professional.`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -29,6 +28,11 @@ or contact support.`;
     });
 
     const data = await response.json();
+
+    if (data.error) {
+      return res.status(500).json({ error: data.error.message });
+    }
+
     res.status(200).json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });

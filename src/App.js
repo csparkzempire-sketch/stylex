@@ -1003,8 +1003,12 @@ function StylexAssistant() {
         body: JSON.stringify({ messages: newMessages })
       });
       const data = await response.json();
-      const reply = data.content[0].text;
-      setMessages([...newMessages, { role: 'assistant', content: reply }]);
+      if (data.error) {
+        setMessages([...newMessages, { role: 'assistant', content: "Error: " + data.error }]);
+      } else {
+        const reply = data.content[0].text;
+        setMessages([...newMessages, { role: 'assistant', content: reply }]);
+      }
     } catch (error) {
       setMessages([...newMessages, { role: 'assistant', content: "Sorry, I'm having trouble connecting. Please try again." }]);
     }
