@@ -11,7 +11,7 @@ const supabase = createClient(
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E8D08A";
 const DARK = "#0A0A0B";
-const DARK2 = "#111114";
+const DARK2  = "#111114";
 const DARK3 = "#1A1A1F";
 const CARD = "#16161C";
 const BORDER = "#2A2A35";
@@ -22,12 +22,12 @@ const RED = "#FF5555";
 
 // ─── DEMO DATA ───
 const professionals = [
-  { id: 1, name: "Adaeze Okonkwo", handle: "@adaezeglow", category: "Hairstylist", location: "Lagos", avatar: "AO", rating: 4.9, reviews: 128, followers: "12.4K", price: "₦18,000", bio: "Natural hair specialist. Crown jewels only.", tags: ["Braids", "Weave", "Locs"], verified: true, available: true, color: "#C9A84C" },
-  { id: 2, name: "Chukwudi Eze", handle: "@chukwudicuts", category: "Barber", location: "Abuja", avatar: "CE", rating: 4.8, reviews: 203, followers: "8.9K", price: "₦5,000", bio: "Precision fades. Sharp lines. Clean finish.", tags: ["Fades", "Beards", "Designs"], verified: true, available: true, color: "#5C8CB5" },
-  { id: 3, name: "Fatima Al-Hassan", handle: "@fatimamua", category: "Makeup Artist", location: "Abuja", avatar: "FA", rating: 5.0, reviews: 87, followers: "22.1K", price: "₦25,000", bio: "Celebrity MUA. Bridal & editorial specialist.", tags: ["Bridal", "Editorial", "Glam"], verified: true, available: false, color: "#B56C8A" },
-  { id: 4, name: "Blessing Nwosu", handle: "@blessingnails", category: "Nail Technician", location: "Port Harcourt", avatar: "BN", rating: 4.7, reviews: 156, followers: "6.3K", price: "₦8,000", bio: "Nail art elevated. Gel, acrylic, chrome.", tags: ["Gel", "Acrylic", "3D Art"], verified: false, available: true, color: "#7C5CB5" },
-  { id: 5, name: "Amara Diallo", handle: "@amaralash", category: "Lash Tech", location: "Lagos", avatar: "AD", rating: 4.9, reviews: 94, followers: "15.7K", price: "₦12,000", bio: "Lash queen. Volume, classic, hybrid.", tags: ["Volume", "Classic", "Hybrid"], verified: true, available: true, color: "#5CB58A" },
-  { id: 6, name: "Kemi Adeyemi", handle: "@kemiskin", category: "Skincare", location: "Lagos", avatar: "KA", rating: 4.6, reviews: 71, followers: "9.2K", price: "₦15,000", bio: "Skin therapist. Glow treatments & facials.", tags: ["Facials", "Glow", "Acne"], verified: true, available: true, color: "#B58C5C" },
+  { id: 1, name: "Adaeze Okonkwo", handle: "@adaezeglow", category: "Hairstylist", location: "Lagos", avatar: "AO", rating: 4.9, reviews: 128, followers: "12.4K", shopPrice: 18000, mobilePrice: 25000, offersShop: true, offersMobile: true, bio: "Natural hair specialist. Crown jewels only.", tags: ["Braids", "Weave", "Locs"], verified: true, available: true, color: "#C9A84C" },
+  { id: 2, name: "Chukwudi Eze", handle: "@chukwudicuts", category: "Barber", location: "Abuja", avatar: "CE", rating: 4.8, reviews: 203, followers: "8.9K", shopPrice: 5000, mobilePrice: 8000, offersShop: true, offersMobile: true, bio: "Precision fades. Sharp lines. Clean finish.", tags: ["Fades", "Beards", "Designs"], verified: true, available: true, color: "#5C8CB5" },
+  { id: 3, name: "Fatima Al-Hassan", handle: "@fatimamua", category: "Makeup Artist", location: "Abuja", avatar: "FA", rating: 5.0, reviews: 87, followers: "22.1K", shopPrice: 25000, mobilePrice: 35000, offersShop: true, offersMobile: true, bio: "Celebrity MUA. Bridal & editorial specialist.", tags: ["Bridal", "Editorial", "Glam"], verified: true, available: false, color: "#B56C8A" },
+  { id: 4, name: "Blessing Nwosu", handle: "@blessingnails", category: "Nail Technician", location: "Port Harcourt", avatar: "BN", rating: 4.7, reviews: 156, followers: "6.3K", shopPrice: 8000, mobilePrice: 13000, offersShop: true, offersMobile: true, bio: "Nail art elevated. Gel, acrylic, chrome.", tags: ["Gel", "Acrylic", "3D Art"], verified: false, available: true, color: "#7C5CB5" },
+  { id: 5, name: "Amara Diallo", handle: "@amaralash", category: "Lash Tech", location: "Lagos", avatar: "AD", rating: 4.9, reviews: 94, followers: "15.7K", shopPrice: 12000, mobilePrice: 18000, offersShop: true, offersMobile: true, bio: "Lash queen. Volume, classic, hybrid.", tags: ["Volume", "Classic", "Hybrid"], verified: true, available: true, color: "#5CB58A" },
+  { id: 6, name: "Kemi Adeyemi", handle: "@kemiskin", category: "Skincare", location: "Lagos", avatar: "KA", rating: 4.6, reviews: 71, followers: "9.2K", shopPrice: 15000, mobilePrice: 22000, offersShop: true, offersMobile: true, bio: "Skin therapist. Glow treatments & facials.", tags: ["Facials", "Glow", "Acne"], verified: true, available: true, color: "#B58C5C" },
 ];
 
 const feedVideos = [
@@ -397,11 +397,16 @@ function BookingModal({ pro, onClose, user }) {
   const [selectedTime, setSelectedTime] = useState(null);
   const [selectedService, setSelectedService] = useState(0);
   const [payMethod, setPayMethod] = useState("flutterwave");
+  const [serviceType, setServiceType] = useState(pro.offersShop ? "shop" : "mobile");
   const [bookingRef, setBookingRef] = useState("");
 
   const today = new Date();
   const days = Array.from({ length: 14 }, (_, i) => { const d = new Date(today); d.setDate(today.getDate() + i); return d; });
-  const servicePrice = parseInt(pro.price.replace(/[₦,]/g, "")) + selectedService * 2000;
+  const COMMISSION_RATE = 0.20; // Your 20% commission
+  const basePrice = serviceType === "mobile" ? pro.mobilePrice : pro.shopPrice;
+  const servicePrice = basePrice + selectedService * 2000;
+  const commission = Math.round(servicePrice * COMMISSION_RATE);
+  const totalPrice = servicePrice + commission;
 
   const handleConfirmBooking = async () => {
     const ref = "SX-" + Math.random().toString(36).substr(2, 6).toUpperCase();
@@ -411,9 +416,10 @@ function BookingModal({ pro, onClose, user }) {
       await supabase.from("bookings").insert({
         client_id: user.id,
         service: pro.tags[selectedService],
+        service_type: serviceType,
         date: days[selectedDate]?.toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" }),
         time: selectedTime,
-        price: Math.round(servicePrice * 1.05),
+        price: totalPrice,
         status: "confirmed",
         reference: ref
       });
@@ -473,7 +479,7 @@ function BookingModal({ pro, onClose, user }) {
                   <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{tag}</div>
                   <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{45 + i * 15} minutes</div>
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: GOLD }}>₦{(parseInt(pro.price.replace(/[₦,]/g, "")) + i * 2000).toLocaleString()}</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: GOLD }}>₦{((serviceType === "mobile" ? pro.mobilePrice : pro.shopPrice) + i * 2000).toLocaleString()}</div>
               </button>
             ))}
           </div>
@@ -497,18 +503,41 @@ function BookingModal({ pro, onClose, user }) {
               </button>
             ))}
           </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, color: MUTED, marginBottom: 8 }}>Choose service type</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {pro.offersShop && (
+                <button onClick={() => setServiceType("shop")} style={{ flex: 1, padding: "12px", borderRadius: 10, cursor: "pointer", background: serviceType === "shop" ? GOLD : DARK3, color: serviceType === "shop" ? "#000" : TEXT, border: `1px solid ${serviceType === "shop" ? GOLD : BORDER}`, fontWeight: 600, fontSize: 13 }}>
+                  🏪 Shop Visit<br/><span style={{ fontSize: 11, fontWeight: 400 }}>₦{pro.shopPrice.toLocaleString()}</span>
+                </button>
+              )}
+              {pro.offersMobile && (
+                <button onClick={() => setServiceType("mobile")} style={{ flex: 1, padding: "12px", borderRadius: 10, cursor: "pointer", background: serviceType === "mobile" ? GOLD : DARK3, color: serviceType === "mobile" ? "#000" : TEXT, border: `1px solid ${serviceType === "mobile" ? GOLD : BORDER}`, fontWeight: 600, fontSize: 13 }}>
+                  🚗 Mobile<br/><span style={{ fontSize: 11, fontWeight: 400 }}>₦{pro.mobilePrice.toLocaleString()}</span>
+                </button>
+              )}
+            </div>
+          </div>
           <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 18, border: `1px solid ${BORDER}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span style={{ fontSize: 13, color: MUTED }}>Service</span>
               <span style={{ fontSize: 13, color: TEXT }}>{pro.tags[selectedService]}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontSize: 13, color: MUTED }}>Platform fee (5%)</span>
-              <span style={{ fontSize: 13, color: TEXT }}>₦{Math.round(servicePrice * 0.05).toLocaleString()}</span>
+              <span style={{ fontSize: 13, color: MUTED }}>Service type</span>
+              <span style={{ fontSize: 13, color: TEXT, textTransform: "capitalize" }}>{serviceType === "mobile" ? "Mobile (they come to you)" : "Shop visit"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 13, color: MUTED }}>Service fee</span>
+              <span style={{ fontSize: 13, color: TEXT }}>₦{servicePrice.toLocaleString()}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 13, color: MUTED }}>Platform fee (20%)</span>
+              <span style={{ fontSize: 13, color: TEXT }}>₦{commission.toLocaleString()}</span>
             </div>
             <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 8, display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Total</span>
-              <span style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>₦{Math.round(servicePrice * 1.05).toLocaleString()}</span>
+              <span style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>₦{totalPrice.toLocaleString()}</span>
             </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
