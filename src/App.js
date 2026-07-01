@@ -1509,14 +1509,27 @@ function MarketplaceScreen({ user, onLogin }) {
 function CreatePostModal({ user, onClose, onPosted }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [mediaKind, setMediaKind] = useState("photo"); // photo | video
   const [caption, setCaption] = useState("");
   const [category, setCategory] = useState("");
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
-  const fileInputRef = useRef(null);
+  const [mode, setMode] = useState("choose"); // choose | recording | preview
+  const [recording, setRecording] = useState(false);
+  const [recordType, setRecordType] = useState("video"); // what the camera will capture
+
+  const photoInputRef = useRef(null);
+  const videoInputRef = useRef(null);
+  const camVideoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
 
   const CATEGORIES = ["Hair", "Makeup", "Barbing", "Nails", "Lashes", "Facial"];
+  const MAX_PHOTO = 5 * 1024 * 1024;   // 5MB
+  const MAX_VIDEO = 20 * 1024 * 1024;  // 20MB (~30s phone video)
 
   // Pre-fill the pro's category
   useEffect(() => {
@@ -1525,22 +1538,128 @@ function CreatePostModal({ user, onClose, onPosted }) {
       .then(({ data }) => { if (data && data.category) setCategory(data.category); });
   }, [user]);
 
-  const handleFileChange = (e) => {
+  // Clean up the camera if the modal closes mid-recording
+  useEffect(() => {
+    return () => stopStream();
+  }, []);
+
+  const stopStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  };
+
+  // ── Pick a file from the phone/computer ──
+  const handleFileChange = (e, kind) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-    if (!f.type.startsWith("image/")) { setError("For now, please choose a photo. Video posting is coming next!"); return; }
-    if (f.size > 5 * 1024 * 1024) { setError("Image is too large. Please use one under 5MB."); return; }
+    if (kind === "photo") {
+      if (!f.type.startsWith("image/")) { setError("That's not a photo file."); return; }
+      if (f.size > MAX_PHOTO) { setError("Photo is too large. Please use one under 5MB."); return; }
+    } else {
+      if (!f.type.startsWith("video/")) { setError("That's not a video file."); return; }
+      if (f.size > MAX_VIDEO) { setError("Video is too large. Please keep it under 20MB (about 30 seconds)."); return; }
+    }
     setError("");
     setFile(f);
+    setMediaKind(kind);
     setPreview(URL.createObjectURL(f));
+    setMode("preview");
+  };
+
+  // ── In-app camera ──
+  const startCamera = async (type) => {
+    setError("");
+    setRecordType(type);
+    setMode("recording");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: type === "video"
+      });
+      streamRef.current = stream;
+      setTimeout(() => {
+        if (camVideoRef.current) {
+          camVideoRef.current.srcObject = stream;
+          camVideoRef.current.muted = true;
+          camVideoRef.current.play().catch(() => {});
+        }
+      }, 100);
+    } catch (err) {
+      setError("Could not access the camera. Allow camera permission and try again, or use 'Choose from device'.");
+      setMode("choose");
+    }
+  };
+
+  // snap a photo from the live camera
+  const snapPhoto = () => {
+    const video = camVideoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const w = video.videoWidth || 480, h = video.videoHeight || 640;
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(video, 0, 0, w, h);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const f = new File([blob], `photo_${Date.now()}.jpg`, { type: "image/jpeg" });
+      setFile(f);
+      setMediaKind("photo");
+      setPreview(URL.createObjectURL(f));
+      stopStream();
+      setMode("preview");
+    }, "image/jpeg", 0.85);
+  };
+
+  // start/stop video recording
+  const startRecording = () => {
+    if (!streamRef.current) return;
+    chunksRef.current = [];
+    let recorder;
+    try {
+      recorder = new MediaRecorder(streamRef.current, { mimeType: "video/webm" });
+    } catch (e) {
+      try { recorder = new MediaRecorder(streamRef.current); }
+      catch (e2) { setError("Recording isn't supported on this browser. Try 'Choose from device'."); return; }
+    }
+    recorderRef.current = recorder;
+    recorder.ondataavailable = (ev) => { if (ev.data.size > 0) chunksRef.current.push(ev.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      if (blob.size > MAX_VIDEO) {
+        setError("That recording is too long. Please keep it under ~30 seconds.");
+        stopStream(); setMode("choose"); return;
+      }
+      const f = new File([blob], `video_${Date.now()}.webm`, { type: "video/webm" });
+      setFile(f);
+      setMediaKind("video");
+      setPreview(URL.createObjectURL(f));
+      stopStream();
+      setMode("preview");
+    };
+    recorder.start();
+    setRecording(true);
+    // auto-stop at 30s to protect storage
+    setTimeout(() => { if (recorderRef.current && recorderRef.current.state === "recording") stopRecording(); }, 30000);
+  };
+  const stopRecording = () => {
+    if (recorderRef.current && recorderRef.current.state === "recording") {
+      recorderRef.current.stop();
+      setRecording(false);
+    }
+  };
+
+  const resetMedia = () => {
+    stopStream();
+    setFile(null); setPreview(null); setError(""); setMode("choose");
   };
 
   const handlePost = async () => {
     setError("");
-    if (!file) { setError("Please choose a photo first."); return; }
+    if (!file) { setError("Please add a photo or video first."); return; }
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
+      const ext = mediaKind === "video" ? "webm" : (file.name.split(".").pop() || "jpg");
       const filePath = `${user.id}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("posts").upload(filePath, file);
       if (upErr) { setError("Upload failed: " + upErr.message); setUploading(false); return; }
@@ -1551,7 +1670,7 @@ function CreatePostModal({ user, onClose, onPosted }) {
       const { error: insErr } = await supabase.from("posts").insert({
         pro_id: user.id,
         pro_name: user.name,
-        media_type: "photo",
+        media_type: mediaKind,
         media_url: mediaUrl,
         caption: caption.trim(),
         category: category,
@@ -1586,45 +1705,104 @@ function CreatePostModal({ user, onClose, onPosted }) {
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={() => { stopStream(); onClose(); }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
           <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Create Post</h3>
-          <span style={{ fontSize: 12, color: MUTED }}>Share your work with the feed</span>
+          <span style={{ fontSize: 12, color: MUTED }}>Share a photo or video</span>
         </div>
-        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+        <button onClick={() => { stopStream(); onClose(); }} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
       </div>
 
       {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
 
-      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
+      {/* Hidden inputs + canvas */}
+      <input ref={photoInputRef} type="file" accept="image/*" onChange={(e) => handleFileChange(e, "photo")} style={{ display: "none" }} />
+      <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => handleFileChange(e, "video")} style={{ display: "none" }} />
+      <canvas ref={canvasRef} style={{ display: "none" }} />
 
-      {preview ? (
-        <div style={{ marginBottom: 16, borderRadius: 14, overflow: "hidden", border: `1px solid ${BORDER}`, position: "relative" }}>
-          <img src={preview} alt="preview" style={{ width: "100%", maxHeight: 300, objectFit: "cover", display: "block" }} />
-          <button onClick={() => { setFile(null); setPreview(null); }} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", border: "none", borderRadius: 8, color: TEXT, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Change</button>
+      {/* CHOOSE MODE */}
+      {mode === "choose" && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <button onClick={() => photoInputRef.current && photoInputRef.current.click()} style={{ padding: "22px 10px", borderRadius: 14, background: DARK3, border: `1px solid ${BORDER}`, cursor: "pointer", color: TEXT }}>
+              <div style={{ fontSize: 30, marginBottom: 8 }}>🖼️</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Choose Photo</div>
+              <div style={{ fontSize: 10, color: MUTED }}>from device</div>
+            </button>
+            <button onClick={() => videoInputRef.current && videoInputRef.current.click()} style={{ padding: "22px 10px", borderRadius: 14, background: DARK3, border: `1px solid ${BORDER}`, cursor: "pointer", color: TEXT }}>
+              <div style={{ fontSize: 30, marginBottom: 8 }}>🎞️</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Choose Video</div>
+              <div style={{ fontSize: 10, color: MUTED }}>under 20MB</div>
+            </button>
+            <button onClick={() => startCamera("photo")} style={{ padding: "22px 10px", borderRadius: 14, background: DARK3, border: `1px solid ${GOLD}44`, cursor: "pointer", color: TEXT }}>
+              <div style={{ fontSize: 30, marginBottom: 8 }}>📸</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Take Photo</div>
+              <div style={{ fontSize: 10, color: MUTED }}>in-app camera</div>
+            </button>
+            <button onClick={() => startCamera("video")} style={{ padding: "22px 10px", borderRadius: 14, background: DARK3, border: `1px solid ${GOLD}44`, cursor: "pointer", color: TEXT }}>
+              <div style={{ fontSize: 30, marginBottom: 8 }}>🔴</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Record Video</div>
+              <div style={{ fontSize: 10, color: MUTED }}>up to 30 sec</div>
+            </button>
+          </div>
         </div>
-      ) : (
-        <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ width: "100%", padding: "40px 20px", borderRadius: 14, background: DARK3, border: `2px dashed ${BORDER}`, cursor: "pointer", marginBottom: 16, color: MUTED }}>
-          <div style={{ fontSize: 40, marginBottom: 10 }}>📸</div>
-          <div style={{ fontSize: 14, color: TEXT, fontWeight: 600, marginBottom: 4 }}>Tap to choose a photo</div>
-          <div style={{ fontSize: 11 }}>On your phone you can take a new photo too</div>
-        </button>
       )}
 
-      <label style={labelStyle}>Caption</label>
-      <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Say something about this look..." style={inputStyle} />
+      {/* RECORDING MODE */}
+      {mode === "recording" && (
+        <div style={{ marginBottom: 16, textAlign: "center" }}>
+          <div style={{ borderRadius: 14, overflow: "hidden", border: `2px solid ${GOLD}44`, marginBottom: 12, background: "#000" }}>
+            <video ref={camVideoRef} playsInline muted style={{ width: "100%", display: "block", transform: "scaleX(-1)", maxHeight: 340 }} />
+          </div>
+          {recordType === "photo" ? (
+            <div style={{ display: "flex", gap: 10 }}>
+              <GoldBtn onClick={resetMedia} outline style={{ flex: 1 }}>Cancel</GoldBtn>
+              <GoldBtn onClick={snapPhoto} style={{ flex: 2 }}>📸 Capture</GoldBtn>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 10 }}>
+              <GoldBtn onClick={resetMedia} outline style={{ flex: 1 }}>Cancel</GoldBtn>
+              {!recording ? (
+                <GoldBtn onClick={startRecording} style={{ flex: 2 }}>🔴 Start Recording</GoldBtn>
+              ) : (
+                <button onClick={stopRecording} style={{ flex: 2, background: RED, border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", padding: "10px 22px" }}>⏹ Stop</button>
+              )}
+            </div>
+          )}
+          {recording && <div style={{ fontSize: 11, color: RED, marginTop: 8, fontWeight: 700 }}>● Recording... (auto-stops at 30s)</div>}
+        </div>
+      )}
 
-      <label style={labelStyle}>Category</label>
-      <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
-        <option value="">Select category...</option>
-        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-      </select>
+      {/* PREVIEW MODE */}
+      {mode === "preview" && preview && (
+        <div style={{ marginBottom: 16, borderRadius: 14, overflow: "hidden", border: `1px solid ${BORDER}`, position: "relative" }}>
+          {mediaKind === "video" ? (
+            <video src={preview} controls playsInline style={{ width: "100%", maxHeight: 300, display: "block", background: "#000" }} />
+          ) : (
+            <img src={preview} alt="preview" style={{ width: "100%", maxHeight: 300, objectFit: "cover", display: "block" }} />
+          )}
+          <button onClick={resetMedia} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", border: "none", borderRadius: 8, color: TEXT, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Change</button>
+        </div>
+      )}
 
-      <GoldBtn onClick={handlePost} disabled={uploading} style={{ width: "100%", padding: "13px" }}>
-        {uploading ? "Posting..." : "Post to Feed 🚀"}
-      </GoldBtn>
-      <p style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10 }}>📹 Video posting arrives in the next update</p>
+      {/* Caption + category + post (shown once media is chosen, or always for caption) */}
+      {mode === "preview" && (
+        <>
+          <label style={labelStyle}>Caption</label>
+          <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Say something about this look..." style={inputStyle} />
+
+          <label style={labelStyle}>Category</label>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+            <option value="">Select category...</option>
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+
+          <GoldBtn onClick={handlePost} disabled={uploading} style={{ width: "100%", padding: "13px" }}>
+            {uploading ? "Posting..." : "Post to Feed 🚀"}
+          </GoldBtn>
+        </>
+      )}
     </Modal>
   );
 }
@@ -2292,12 +2470,15 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
 
 // ─── PRO PROFILE ───
 function ProProfileScreen({ pro, onBack, user }) {
-  const [tab, setTab] = useState("portfolio");
+  const [tab, setTab] = useState("posts");
   const [following, setFollowing] = useState(false);
   const [showBook, setShowBook] = useState(false);
   const [proWork, setProWork] = useState([]);
   const [loadingWork, setLoadingWork] = useState(true);
   const [followerCount, setFollowerCount] = useState(0);
+  const [proPosts, setProPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [openPost, setOpenPost] = useState(null);
 
   // The real DB id (realPros use "db-<uuid>"); demo pros won't have one
   const realProId = typeof pro.id === "string" && pro.id.startsWith("db-") ? pro.id.slice(3) : null;
@@ -2307,6 +2488,13 @@ function ProProfileScreen({ pro, onBack, user }) {
     if (!realProId) { setLoadingWork(false); return; }
     supabase.from("portfolio").select("*").eq("pro_id", realProId).order("created_at", { ascending: false })
       .then(({ data }) => { setProWork(data || []); setLoadingWork(false); });
+  }, [realProId]);
+
+  // Load this pro's feed posts (videos + photos) for their profile grid
+  useEffect(() => {
+    if (!realProId) { setLoadingPosts(false); return; }
+    supabase.from("posts").select("*").eq("pro_id", realProId).order("created_at", { ascending: false })
+      .then(({ data }) => { setProPosts(data || []); setLoadingPosts(false); });
   }, [realProId]);
 
   // Load follower count + whether the current user already follows this pro
@@ -2367,10 +2555,38 @@ function ProProfileScreen({ pro, onBack, user }) {
       </div>
 
       <div style={{ padding: "0 20px", display: "flex", gap: 0, borderBottom: `1px solid ${BORDER}`, marginBottom: 16 }}>
-        {["portfolio", "reviews"].map(t => (
+        {["posts", "portfolio", "reviews"].map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", padding: "12px 0", fontWeight: 600, fontSize: 13, color: tab === t ? GOLD : MUTED, borderBottom: tab === t ? `2px solid ${GOLD}` : "2px solid transparent", textTransform: "capitalize" }}>{t}</button>
         ))}
       </div>
+
+      {tab === "posts" && (
+        <div style={{ padding: "0 20px 100px" }}>
+          {loadingPosts ? (
+            <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading posts...</div>
+          ) : proPosts.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {proPosts.map(post => (
+                <div key={post.id} onClick={() => setOpenPost(post)} style={{ aspectRatio: "1", borderRadius: 12, overflow: "hidden", border: `1px solid ${pro.color}33`, position: "relative", cursor: "pointer", background: "#000" }}>
+                  {post.media_type === "video" ? (
+                    <>
+                      <video src={post.media_url} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      <div style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", borderRadius: 6, padding: "2px 6px", fontSize: 10, color: TEXT }}>▶</div>
+                    </>
+                  ) : (
+                    <img src={post.media_url} alt={post.caption || "post"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📱</div>
+              <p style={{ color: MUTED, fontSize: 13 }}>No posts yet</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === "portfolio" && (
         <div style={{ padding: "0 20px 100px" }}>
@@ -2411,6 +2627,25 @@ function ProProfileScreen({ pro, onBack, user }) {
         </div>
       )}
       {showBook && <BookingModal pro={pro} user={user} onClose={() => setShowBook(false)} />}
+      {openPost && (
+        <Modal onClose={() => setOpenPost(null)}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button onClick={() => setOpenPost(null)} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+          </div>
+          <div style={{ borderRadius: 14, overflow: "hidden", background: "#000", marginBottom: 12 }}>
+            {openPost.media_type === "video" ? (
+              <video src={openPost.media_url} controls autoPlay playsInline style={{ width: "100%", maxHeight: 420, display: "block" }} />
+            ) : (
+              <img src={openPost.media_url} alt={openPost.caption || "post"} style={{ width: "100%", maxHeight: 420, objectFit: "contain", display: "block" }} />
+            )}
+          </div>
+          {openPost.caption && <p style={{ color: TEXT, fontSize: 14, margin: "0 0 6px" }}>{openPost.caption}</p>}
+          <div style={{ display: "flex", gap: 14, color: MUTED, fontSize: 13 }}>
+            <span>❤️ {formatNum(openPost.likes || 0)}</span>
+            <span>💬 {formatNum(openPost.comments || 0)}</span>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
