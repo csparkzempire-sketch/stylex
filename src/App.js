@@ -881,6 +881,50 @@ function BookingModal({ pro, onClose, user }) {
   );
 }
 
+// ─── STYLE IMAGE (real photo of a recommended style, with safe fallback) ───
+// Fetches a real photo for a style name via /api/styleimage (Unsplash API).
+// If no photo is found or the request fails, shows a clean styled placeholder
+// so it can never crash the app or leave an empty broken box.
+function StyleImage({ style, scanType }) {
+  const [imgUrl, setImgUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const context = scanType === "hair" ? "hairstyle" : scanType === "nails" ? "nails" : scanType === "face" ? "makeup" : "beauty";
+    fetch("/api/styleimage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: style + " " + context })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!active) return;
+        if (data && data.url) setImgUrl(data.url);
+        else setFailed(true);
+        setLoading(false);
+      })
+      .catch(() => { if (active) { setFailed(true); setLoading(false); } });
+    return () => { active = false; };
+  }, [style, scanType]);
+
+  return (
+    <div style={{ borderRadius: 12, overflow: "hidden", border: `1px solid ${BORDER}`, background: DARK3 }}>
+      <div style={{ width: "100%", height: 110, display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg, ${GOLD}22, ${DARK3})` }}>
+        {loading ? (
+          <span style={{ fontSize: 11, color: MUTED }}>Loading...</span>
+        ) : imgUrl && !failed ? (
+          <img src={imgUrl} alt={style} onError={() => setFailed(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        ) : (
+          <span style={{ fontSize: 32 }}>{scanType === "hair" ? "💇" : scanType === "nails" ? "💅" : scanType === "face" ? "💄" : "✨"}</span>
+        )}
+      </div>
+      <div style={{ padding: "8px 10px", fontSize: 12, color: GOLD, fontWeight: 600, textAlign: "center" }}>{style}</div>
+    </div>
+  );
+}
+
 // ─── AI SCANNER (REAL CAMERA + CLAUDE VISION) ───
 // Feature 1: opens the real camera, captures a photo, sends it to /api/scan
 // (a serverless function that calls Claude's vision API) for real analysis.
@@ -1067,18 +1111,10 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
           {result.styles && result.styles.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>RECOMMENDED STYLES</div>
-              {/* Real photos of each recommended style (from Unsplash) */}
+              {/* Real photos of each recommended style (via /api/styleimage) */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
                 {result.styles.slice(0, 4).map(style => (
-                  <div key={style} style={{ borderRadius: 12, overflow: "hidden", border: `1px solid ${BORDER}`, background: DARK3 }}>
-                    <img
-                      src={`https://source.unsplash.com/240x180/?${encodeURIComponent(style + " " + (scanType === "hair" ? "hairstyle" : scanType === "nails" ? "nails" : scanType === "face" ? "makeup" : "beauty"))}`}
-                      alt={style}
-                      style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }}
-                      onError={(e) => { e.target.style.display = "none"; }}
-                    />
-                    <div style={{ padding: "8px 10px", fontSize: 12, color: GOLD, fontWeight: 600, textAlign: "center" }}>{style}</div>
-                  </div>
+                  <StyleImage key={style} style={style} scanType={scanType} />
                 ))}
               </div>
               <p style={{ fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 1.5, margin: 0 }}>
