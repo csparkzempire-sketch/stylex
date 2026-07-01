@@ -75,10 +75,24 @@ function Modal({ onClose, children }) {
   );
 }
 
-// ─── VERIFICATION CHECK (shared helper) ───
-function VerifiedTick({ verified, size = 13 }) {
+// ─── VERIFIED BADGE (shared component) ───
+// Shows a gold verified checkmark next to a pro's name once they've
+// subscribed to verification (is_verified = true in their profile).
+// Two styles: "tick" (small inline ✓ circle) and "pill" (✓ VERIFIED label).
+function VerifiedBadge({ verified, variant = "tick", size = 15 }) {
   if (!verified) return null;
-  return <span style={{ color: GOLD, fontSize: size }}>✓</span>;
+  if (variant === "pill") {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: `${GOLD}22`, border: `1px solid ${GOLD}55`, borderRadius: 20, padding: "3px 10px", fontSize: 10, color: GOLD, fontWeight: 800, letterSpacing: 0.5 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: "#0A0A0B", fontSize: 9, fontWeight: 900 }}>✓</span>
+        VERIFIED
+      </span>
+    );
+  }
+  // default: filled gold circle tick
+  return (
+    <span title="Verified professional" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: "#0A0A0B", fontSize: size * 0.6, fontWeight: 900, flexShrink: 0 }}>✓</span>
+  );
 }
 
 // ─── INPUT FIELD ───
@@ -870,7 +884,7 @@ function BookingModal({ pro, onClose, user }) {
 // ─── AI SCANNER (REAL CAMERA + CLAUDE VISION) ───
 // Feature 1: opens the real camera, captures a photo, sends it to /api/scan
 // (a serverless function that calls Claude's vision API) for real analysis.
-function AIScannerModal({ onClose }) {
+function AIScannerModal({ onClose, realPros = [], onBookPro }) {
   const [step, setStep] = useState("choose"); // choose | camera | analyzing | results | error
   const [scanType, setScanType] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
@@ -886,6 +900,21 @@ function AIScannerModal({ onClose }) {
     { id: "nails", icon: "💅", label: "Nail Shape", desc: "Get nail art recommendations" },
     { id: "skin", icon: "✨", label: "Skin Tone", desc: "Find your perfect look" },
   ];
+
+  // Which pro categories match each scan type — used to recommend a pro
+  const scanToCategories = {
+    face: ["Makeup Artist", "Skincare"],
+    hair: ["Hairstylist", "Barber"],
+    nails: ["Nail Technician", "Nail Tech"],
+    skin: ["Skincare", "Makeup Artist"],
+  };
+
+  // Combine real pros (first) + demo pros, then match to the scan type
+  const allPros = [...realPros, ...professionals];
+  const matchedPros = allPros.filter(p => {
+    const cats = scanToCategories[scanType] || [];
+    return cats.some(c => (p.category || "").toLowerCase().includes(c.toLowerCase().split(" ")[0]));
+  }).slice(0, 3);
 
   // Stop the camera stream
   const stopCamera = () => {
@@ -918,7 +947,7 @@ function AIScannerModal({ onClose }) {
         }
       }, 100);
     } catch (err) {
-      setErrorMsg("Could not access camera. Please allow camera permission and try again.");
+      setErrorMsg("Could not access the camera. On a computer, click the camera icon in your browser's address bar and choose Allow, then try again. For the best experience, use the scanner on your phone.");
       setStep("error");
     }
   };
@@ -1038,17 +1067,52 @@ function AIScannerModal({ onClose }) {
           {result.styles && result.styles.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>RECOMMENDED STYLES</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {result.styles.map(style => (
-                  <span key={style} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 20, padding: "6px 14px", fontSize: 12, color: GOLD, fontWeight: 600 }}>{style}</span>
+              {/* Real photos of each recommended style (from Unsplash) */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                {result.styles.slice(0, 4).map(style => (
+                  <div key={style} style={{ borderRadius: 12, overflow: "hidden", border: `1px solid ${BORDER}`, background: DARK3 }}>
+                    <img
+                      src={`https://source.unsplash.com/240x180/?${encodeURIComponent(style + " " + (scanType === "hair" ? "hairstyle" : scanType === "nails" ? "nails" : scanType === "face" ? "makeup" : "beauty"))}`}
+                      alt={style}
+                      style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }}
+                      onError={(e) => { e.target.style.display = "none"; }}
+                    />
+                    <div style={{ padding: "8px 10px", fontSize: 12, color: GOLD, fontWeight: 600, textAlign: "center" }}>{style}</div>
+                  </div>
                 ))}
               </div>
+              <p style={{ fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 1.5, margin: 0 }}>
+                Real examples of each recommended style
+              </p>
             </div>
           )}
           {result.tips && (
             <div style={{ background: DARK3, borderRadius: 12, padding: 14, marginBottom: 16, border: `1px solid ${BORDER}` }}>
               <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>💡 TIP</div>
               <div style={{ fontSize: 13, color: `${TEXT}cc`, lineHeight: 1.6 }}>{result.tips}</div>
+            </div>
+          )}
+
+          {/* Recommend a professional who can do this look */}
+          {matchedPros.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>✨ PROS WHO CAN DO THIS FOR YOU</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {matchedPros.map(pro => (
+                  <div key={pro.id} style={{ display: "flex", alignItems: "center", gap: 12, background: DARK3, borderRadius: 12, padding: "10px 12px", border: `1px solid ${BORDER}` }}>
+                    <Avatar initials={pro.avatar} size={42} color={pro.color} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>{pro.name}</span>
+                        <VerifiedBadge verified={pro.verified} size={13} />
+                      </div>
+                      <div style={{ fontSize: 11, color: MUTED }}>{pro.category} · {pro.location}</div>
+                      <div style={{ fontSize: 12, color: GOLD, fontWeight: 700 }}>from ₦{(pro.shopPrice || pro.mobilePrice || 0).toLocaleString()}</div>
+                    </div>
+                    <button onClick={() => { handleClose(); if (onBookPro) onBookPro(pro); }} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 8, color: "#0A0A0B", padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Book</button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           <div style={{ display: "flex", gap: 10 }}>
@@ -1397,7 +1461,7 @@ function HomeScreen({ user, onProfile }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Avatar initials={item.pro.avatar} size={28} color={item.pro.color} />
                   <span style={{ fontSize: 12, color: `${TEXT}cc` }}>{item.pro.name}</span>
-                  {item.pro.verified && <span style={{ fontSize: 12, color: GOLD }}>✓</span>}
+                  <VerifiedBadge verified={item.pro.verified} size={13} />
                 </div>
               </div>
             </div>
@@ -1459,7 +1523,7 @@ function ExploreScreen({ onProfile, user, realPros = [] }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                     <span style={{ fontWeight: 800, fontSize: 15, color: TEXT }}>{pro.name}</span>
-                    {pro.verified && <span style={{ color: GOLD, fontSize: 13 }}>✓</span>}
+                    <VerifiedBadge verified={pro.verified} size={15} />
                   </div>
                   <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>{pro.handle}</div>
                   <Badge text={pro.category} color={pro.color} />
@@ -1554,11 +1618,25 @@ function BookingsScreen({ user, onLogin }) {
 }
 
 // ─── PROFILE SCREEN ───
-function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketplace, onOpenSubscription }) {
+function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketplace, onOpenSubscription, realPros = [], onBookPro }) {
   const [showScanner, setShowScanner] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [showProductUpload, setShowProductUpload] = useState(false);
   const [showCollab, setShowCollab] = useState(false);
+  const [myVerified, setMyVerified] = useState(false);
+  const [myBoosted, setMyBoosted] = useState(false);
+
+  // Load this user's own verified/boost status so we can show their badge
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("is_verified, is_boosted").eq("id", user.id).single()
+      .then(({ data }) => {
+        if (data) {
+          setMyVerified(data.is_verified === true);
+          setMyBoosted(data.is_boosted === true);
+        }
+      });
+  }, [user]);
 
   if (!user) return <AuthScreen onAuthenticated={onAuth} />;
 
@@ -1570,11 +1648,17 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 16 }}>
           <Avatar initials={user.name.slice(0, 2).toUpperCase()} size={72} color={GOLD} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: 18, color: TEXT, marginBottom: 2 }}>{user.name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <div style={{ fontWeight: 800, fontSize: 18, color: TEXT }}>{user.name}</div>
+              <VerifiedBadge verified={myVerified} size={16} />
+            </div>
             <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>{user.email}</div>
-            <span style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 6, padding: "3px 10px", fontSize: 10, color: GOLD, fontWeight: 700 }}>
-              {isPro ? "✂️ PROFESSIONAL" : "👤 CLIENT"}
-            </span>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 6, padding: "3px 10px", fontSize: 10, color: GOLD, fontWeight: 700 }}>
+                {isPro ? "✂️ PROFESSIONAL" : "👤 CLIENT"}
+              </span>
+              {myBoosted && <span style={{ background: `${GREEN}22`, border: `1px solid ${GREEN}55`, borderRadius: 6, padding: "3px 10px", fontSize: 10, color: GREEN, fontWeight: 700 }}>🚀 BOOSTED</span>}
+            </div>
           </div>
         </div>
 
@@ -1655,7 +1739,7 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
         ))}
       </div>
 
-      {showScanner && <AIScannerModal onClose={() => setShowScanner(false)} />}
+      {showScanner && <AIScannerModal onClose={() => setShowScanner(false)} realPros={realPros} onBookPro={onBookPro} />}
       {showProductUpload && <ProductUploadModal user={user} onClose={() => setShowProductUpload(false)} />}
       {showCollab && <CollabModal user={user} onClose={() => setShowCollab(false)} />}
       {showUpload && (
@@ -1703,7 +1787,7 @@ function ProProfileScreen({ pro, onBack, user }) {
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 20, margin: 0 }}>{pro.name}</h2>
-              {pro.verified && <span style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 6, padding: "2px 8px", fontSize: 10, color: GOLD, fontWeight: 700 }}>✓ VERIFIED</span>}
+              {pro.verified && <VerifiedBadge verified={pro.verified} variant="pill" />}
             </div>
             <div style={{ color: MUTED, fontSize: 13, marginBottom: 8 }}>{pro.handle} · {pro.location}</div>
             <Badge text={pro.category} color={pro.color} />
@@ -1843,6 +1927,7 @@ export default function StylexApp() {
   const [realPros, setRealPros] = useState([]);
   const [showProDashboard, setShowProDashboard] = useState(false);
   const [showSubscription, setShowSubscription] = useState(false);
+  const [scannerBookPro, setScannerBookPro] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // EFFECT 1 — fetch real professionals from Supabase (FIXED: now its own top-level effect)
@@ -1947,7 +2032,7 @@ export default function StylexApp() {
       {activeTab === "explore" && <ExploreScreen user={user} realPros={realPros} onProfile={(pro) => setViewingPro(pro)} />}
       {activeTab === "marketplace" && <MarketplaceScreen user={user} onLogin={() => setActiveTab("profile")} />}
       {activeTab === "bookings" && <BookingsScreen user={user} onLogin={() => setActiveTab("profile")} />}
-      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} onOpenDashboard={() => setShowProDashboard(true)} onOpenMarketplace={() => setActiveTab("marketplace")} onOpenSubscription={() => setShowSubscription(true)} />}
+      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} onOpenDashboard={() => setShowProDashboard(true)} onOpenMarketplace={() => setActiveTab("marketplace")} onOpenSubscription={() => setShowSubscription(true)} realPros={realPros} onBookPro={(pro) => setScannerBookPro(pro)} />}
 
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: `${DARK2}f5`, backdropFilter: "blur(20px)", borderTop: `1px solid ${BORDER}`, display: "flex", padding: "8px 0 16px", zIndex: 200 }}>
         {navItems.map(item => {
@@ -1965,6 +2050,7 @@ export default function StylexApp() {
       <StylexAssistant />
       {showProDashboard && <ProDashboard user={user} onClose={() => setShowProDashboard(false)} onOpenSubscription={() => { setShowProDashboard(false); setShowSubscription(true); }} />}
       {showSubscription && <SubscriptionModal user={user} onClose={() => setShowSubscription(false)} onUpdated={() => {}} />}
+      {scannerBookPro && <BookingModal pro={scannerBookPro} user={user} onClose={() => setScannerBookPro(null)} />}
     </div>
   );
 }

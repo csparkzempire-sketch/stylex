@@ -31,6 +31,8 @@ Respond ONLY with a valid JSON object (no markdown, no backticks) in exactly thi
   "tips": "one practical beauty tip relevant to what you see"
 }
 
+IMPORTANT for "styles": give 4 specific, well-known style names that would return good photo results if searched online (e.g. "knotless box braids", "soft glam makeup", "almond acrylic nails", "taper fade"). Keep each style name 2-4 words, real and searchable — not vague descriptions. Tailor them to Nigerian/African beauty where relevant.
+
 If the image is unclear or doesn't show what's needed, still return the JSON with your best guess and mention it gently in the description.`;
 
   try {
