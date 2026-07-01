@@ -144,7 +144,7 @@ function SignInForm({ onSwitch, onSuccess }) {
         return;
       }
 
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single();
+      const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
       onSuccess({
         id: data.user.id,
         email: data.user.email,
@@ -569,7 +569,7 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
         .from("profiles")
         .select("*")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
       if (data) {
         setCategory(data.category || "");
         setBio(data.bio || "");
@@ -1665,7 +1665,7 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
   // Load this user's own verified/boost status so we can show their badge
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles").select("is_verified, is_boosted").eq("id", user.id).single()
+    supabase.from("profiles").select("is_verified, is_boosted").eq("id", user.id).maybeSingle()
       .then(({ data }) => {
         if (data) {
           setMyVerified(data.is_verified === true);
@@ -2005,7 +2005,7 @@ export default function StylexApp() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        supabase.from("profiles").select("*").eq("id", session.user.id).single()
+        supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle()
           .then(({ data: profile }) => {
             setUser({
               id: session.user.id,
