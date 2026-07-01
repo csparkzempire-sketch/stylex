@@ -1629,6 +1629,85 @@ function CreatePostModal({ user, onClose, onPosted }) {
   );
 }
 
+// ─── COMMENTS MODAL ───
+// Real comments on a post, saved to the "comments" table. Anyone signed in
+// can comment; the post's comment count updates live.
+function CommentsModal({ post, user, onClose, onCountChange }) {
+  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true })
+      .then(({ data }) => { setComments(data || []); setLoading(false); });
+  };
+  useEffect(() => { load(); }, [post.id]);
+
+  const send = async () => {
+    if (!user) { alert("Please sign in to comment."); return; }
+    if (!text.trim()) return;
+    setSending(true);
+    const { error } = await supabase.from("comments").insert({
+      post_id: post.id,
+      user_id: user.id,
+      user_name: user.name,
+      text: text.trim()
+    });
+    if (!error) {
+      const newCount = (comments.length + 1);
+      // keep the post's comment count in sync
+      await supabase.from("posts").update({ comments: newCount }).eq("id", post.id);
+      if (onCountChange) onCountChange(newCount);
+      setText("");
+      load();
+    }
+    setSending(false);
+  };
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: 0 }}>Comments</h3>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      <div style={{ maxHeight: 320, overflowY: "auto", marginBottom: 14 }}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 20, color: MUTED, fontSize: 13 }}>Loading...</div>
+        ) : comments.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 30 }}>
+            <div style={{ fontSize: 34, marginBottom: 8 }}>💬</div>
+            <p style={{ color: MUTED, fontSize: 13 }}>No comments yet. Be the first!</p>
+          </div>
+        ) : (
+          comments.map(c => (
+            <div key={c.id} style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              <Avatar initials={(c.user_name || "U").slice(0, 2).toUpperCase()} size={34} color={GOLD} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{c.user_name}</div>
+                <div style={{ fontSize: 13, color: `${TEXT}cc`, lineHeight: 1.5 }}>{c.text}</div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, borderTop: `1px solid ${BORDER}`, paddingTop: 14 }}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="Add a comment..."
+          style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "11px 12px", color: TEXT, fontSize: 14, outline: "none" }}
+        />
+        <GoldBtn onClick={send} disabled={sending} style={{ padding: "10px 18px" }}>{sending ? "..." : "Post"}</GoldBtn>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── HOME SCREEN ───
 function HomeScreen({ user, onProfile, realPros = [] }) {
   const [activeCategory, setActiveCategory] = useState("All");
@@ -1638,6 +1717,7 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [commentPost, setCommentPost] = useState(null);
 
   const loadPosts = () => {
     setLoadingPosts(true);
@@ -1721,7 +1801,7 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
                   <button onClick={() => toggleLike(post)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
                     <span style={{ fontSize: 16 }}>{liked[post.id] ? "❤️" : "🤍"}</span>{formatNum(post.likes || 0)}
                   </button>
-                  <button style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
+                  <button onClick={() => setCommentPost(post)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
                     <span style={{ fontSize: 16 }}>💬</span>{formatNum(post.comments || 0)}
                   </button>
                   <button onClick={() => setSaved(p => ({ ...p, [post.id]: !p[post.id] }))} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
@@ -1778,6 +1858,7 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
       </div>
       {bookModal && <BookingModal pro={bookModal} user={user} onClose={() => setBookModal(null)} />}
       {showCreate && <CreatePostModal user={user} onClose={() => setShowCreate(false)} onPosted={loadPosts} />}
+      {commentPost && <CommentsModal post={commentPost} user={user} onClose={() => setCommentPost(null)} onCountChange={(n) => setPosts(ps => ps.map(p => p.id === commentPost.id ? { ...p, comments: n } : p))} />}
     </div>
   );
 }
@@ -2044,7 +2125,7 @@ function PortfolioUploadModal({ user, onClose }) {
 }
 
 // ─── PROFILE SCREEN ───
-function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketplace, onOpenSubscription, realPros = [], onBookPro }) {
+function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketplace, onOpenSubscription, realPros = [], onBookPro, refreshKey = 0 }) {
   const [showScanner, setShowScanner] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [showProductUpload, setShowProductUpload] = useState(false);
@@ -2065,7 +2146,8 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
       });
   }, [user]);
 
-  // Load the pros this user is following (for clients)
+  // Load the pros this user is following (for clients).
+  // Re-runs when refreshKey changes (e.g. after visiting a pro's page and following).
   useEffect(() => {
     if (!user) return;
     supabase.from("follows").select("pro_id").eq("follower_id", user.id)
@@ -2075,7 +2157,7 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
         const { data: pros } = await supabase.from("profiles").select("id, full_name, category, location").in("id", ids);
         setFollowingPros(pros || []);
       });
-  }, [user]);
+  }, [user, refreshKey]);
 
   if (!user) return <AuthScreen onAuthenticated={onAuth} />;
 
@@ -2420,6 +2502,7 @@ export default function StylexApp() {
   const [showProDashboard, setShowProDashboard] = useState(false);
   const [showSubscription, setShowSubscription] = useState(false);
   const [scannerBookPro, setScannerBookPro] = useState(null);
+  const [profileRefresh, setProfileRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // EFFECT 1 — fetch real professionals from Supabase (FIXED: now its own top-level effect)
@@ -2513,7 +2596,7 @@ export default function StylexApp() {
   if (viewingPro) {
     return (
       <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight: "100vh", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-        <ProProfileScreen pro={viewingPro} user={user} onBack={() => setViewingPro(null)} />
+        <ProProfileScreen pro={viewingPro} user={user} onBack={() => { setViewingPro(null); setProfileRefresh(n => n + 1); }} />
       </div>
     );
   }
@@ -2524,7 +2607,7 @@ export default function StylexApp() {
       {activeTab === "explore" && <ExploreScreen user={user} realPros={realPros} onProfile={(pro) => setViewingPro(pro)} />}
       {activeTab === "marketplace" && <MarketplaceScreen user={user} onLogin={() => setActiveTab("profile")} />}
       {activeTab === "bookings" && <BookingsScreen user={user} onLogin={() => setActiveTab("profile")} />}
-      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} onOpenDashboard={() => setShowProDashboard(true)} onOpenMarketplace={() => setActiveTab("marketplace")} onOpenSubscription={() => setShowSubscription(true)} realPros={realPros} onBookPro={(pro) => setScannerBookPro(pro)} />}
+      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} onOpenDashboard={() => setShowProDashboard(true)} onOpenMarketplace={() => setActiveTab("marketplace")} onOpenSubscription={() => setShowSubscription(true)} realPros={realPros} onBookPro={(pro) => setScannerBookPro(pro)} refreshKey={profileRefresh} />}
 
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: `${DARK2}f5`, backdropFilter: "blur(20px)", borderTop: `1px solid ${BORDER}`, display: "flex", padding: "8px 0 16px", zIndex: 200 }}>
         {navItems.map(item => {
