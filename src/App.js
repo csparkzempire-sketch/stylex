@@ -1033,16 +1033,25 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
       setResult(data);
       setStep("results");
 
-      // Fetch real pro work matching this scan's categories
+      // Fetch real pro work matching this scan's categories.
+      // We pull recent photos and filter them in JS with a fuzzy, case-insensitive
+      // match (same approach as matchedPros) so small casing/spacing differences
+      // in the saved category don't hide real work.
       const cats = scanToCategories[scanType] || [];
       if (cats.length > 0) {
         const { data: work } = await supabase
           .from("portfolio")
           .select("*")
-          .in("category", cats)
           .order("created_at", { ascending: false })
-          .limit(6);
-        if (work) setPortfolioWork(work);
+          .limit(50);
+        if (work) {
+          const catKeys = cats.map(c => c.toLowerCase().split(" ")[0]); // e.g. "hairstylist","barber"
+          const filtered = work.filter(w => {
+            const wc = (w.category || "").toLowerCase();
+            return catKeys.some(k => wc.includes(k));
+          }).slice(0, 6);
+          setPortfolioWork(filtered);
+        }
       }
     } catch (err) {
       setErrorMsg("Something went wrong analyzing your photo. Please try again.");
@@ -1965,6 +1974,44 @@ function ProProfileScreen({ pro, onBack, user }) {
   const [tab, setTab] = useState("portfolio");
   const [following, setFollowing] = useState(false);
   const [showBook, setShowBook] = useState(false);
+  const [proWork, setProWork] = useState([]);
+  const [loadingWork, setLoadingWork] = useState(true);
+  const [followerCount, setFollowerCount] = useState(0);
+
+  // The real DB id (realPros use "db-<uuid>"); demo pros won't have one
+  const realProId = typeof pro.id === "string" && pro.id.startsWith("db-") ? pro.id.slice(3) : null;
+
+  // Load this pro's uploaded portfolio photos
+  useEffect(() => {
+    if (!realProId) { setLoadingWork(false); return; }
+    supabase.from("portfolio").select("*").eq("pro_id", realProId).order("created_at", { ascending: false })
+      .then(({ data }) => { setProWork(data || []); setLoadingWork(false); });
+  }, [realProId]);
+
+  // Load follower count + whether the current user already follows this pro
+  useEffect(() => {
+    if (!realProId) return;
+    supabase.from("follows").select("*", { count: "exact", head: true }).eq("pro_id", realProId)
+      .then(({ count }) => setFollowerCount(count || 0));
+    if (user) {
+      supabase.from("follows").select("*").eq("pro_id", realProId).eq("follower_id", user.id).maybeSingle()
+        .then(({ data }) => setFollowing(!!data));
+    }
+  }, [realProId, user]);
+
+  const toggleFollow = async () => {
+    if (!user) { alert("Please sign in to follow professionals."); return; }
+    if (!realProId) { setFollowing(f => !f); return; } // demo pros: local only
+    if (following) {
+      await supabase.from("follows").delete().eq("pro_id", realProId).eq("follower_id", user.id);
+      setFollowing(false);
+      setFollowerCount(c => Math.max(0, c - 1));
+    } else {
+      await supabase.from("follows").insert({ pro_id: realProId, follower_id: user.id });
+      setFollowing(true);
+      setFollowerCount(c => c + 1);
+    }
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: DARK, fontFamily: "'Helvetica Neue', Arial, sans-serif", paddingBottom: 100 }}>
@@ -1983,7 +2030,7 @@ function ProProfileScreen({ pro, onBack, user }) {
             <Badge text={pro.category} color={pro.color} />
             <p style={{ color: `${TEXT}99`, fontSize: 13, margin: "10px 0 12px", lineHeight: 1.6 }}>{pro.bio}</p>
             <div style={{ display: "flex", gap: 20, marginBottom: 14 }}>
-              {[{ label: "Followers", val: pro.followers }, { label: "Reviews", val: pro.reviews }, { label: "Rating", val: `${pro.rating}★` }].map(s => (
+              {[{ label: "Followers", val: realProId ? followerCount : pro.followers }, { label: "Reviews", val: pro.reviews }, { label: "Rating", val: `${pro.rating}★` }].map(s => (
                 <div key={s.label}>
                   <div style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>{s.val}</div>
                   <div style={{ fontSize: 11, color: MUTED }}>{s.label}</div>
@@ -1991,7 +2038,7 @@ function ProProfileScreen({ pro, onBack, user }) {
               ))}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <GoldBtn onClick={() => setFollowing(f => !f)} outline={!following} style={{ fontSize: 12, padding: "8px 18px" }}>{following ? "✓ Following" : "+ Follow"}</GoldBtn>
+              <GoldBtn onClick={toggleFollow} outline={!following} style={{ fontSize: 12, padding: "8px 18px" }}>{following ? "✓ Following" : "+ Follow"}</GoldBtn>
               <GoldBtn onClick={() => setShowBook(true)} style={{ fontSize: 12, padding: "8px 18px" }}>Book Now</GoldBtn>
             </div>
           </div>
@@ -2005,10 +2052,26 @@ function ProProfileScreen({ pro, onBack, user }) {
       </div>
 
       {tab === "portfolio" && (
-        <div style={{ padding: "0 20px 100px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          {["✨", "👑", "💫", "🌟", "💎", "🎨"].map((emoji, i) => (
-            <div key={i} style={{ aspectRatio: "1", borderRadius: 12, background: `linear-gradient(135deg, ${pro.color}22, ${DARK3})`, border: `1px solid ${pro.color}33`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, cursor: "pointer" }}>{emoji}</div>
-          ))}
+        <div style={{ padding: "0 20px 100px" }}>
+          {loadingWork ? (
+            <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading work...</div>
+          ) : proWork.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {proWork.map(work => (
+                <div key={work.id} style={{ aspectRatio: "1", borderRadius: 12, overflow: "hidden", border: `1px solid ${pro.color}33`, position: "relative" }}>
+                  <img src={work.image_url} alt={work.style_name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  {work.style_name && (
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(0,0,0,0.8))", padding: "12px 6px 5px", fontSize: 9, color: TEXT, fontWeight: 600 }}>{work.style_name}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📸</div>
+              <p style={{ color: MUTED, fontSize: 13 }}>No work posted yet</p>
+            </div>
+          )}
         </div>
       )}
 
