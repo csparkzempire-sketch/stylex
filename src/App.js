@@ -934,6 +934,7 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
   const [capturedImage, setCapturedImage] = useState(null);
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [portfolioWork, setPortfolioWork] = useState([]);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -1031,6 +1032,18 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
       }
       setResult(data);
       setStep("results");
+
+      // Fetch real pro work matching this scan's categories
+      const cats = scanToCategories[scanType] || [];
+      if (cats.length > 0) {
+        const { data: work } = await supabase
+          .from("portfolio")
+          .select("*")
+          .in("category", cats)
+          .order("created_at", { ascending: false })
+          .limit(6);
+        if (work) setPortfolioWork(work);
+      }
     } catch (err) {
       setErrorMsg("Something went wrong analyzing your photo. Please try again.");
       setStep("error");
@@ -1043,6 +1056,7 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
     setCapturedImage(null);
     setResult(null);
     setErrorMsg("");
+    setPortfolioWork([]);
     setStep("choose");
   };
 
@@ -1108,10 +1122,36 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
             <div style={{ fontWeight: 800, fontSize: 16, color: GOLD, marginBottom: 6 }}>{result.type}</div>
             <div style={{ fontSize: 13, color: `${TEXT}99`, lineHeight: 1.6 }}>{result.description}</div>
           </div>
+
+          {/* Real work by STYLEX pros matching this scan — book them directly */}
+          {portfolioWork.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>💎 REAL WORK BY STYLEX PROS</div>
+              <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 4 }}>
+                {portfolioWork.map(work => {
+                  const pro = [...realPros, ...professionals].find(p => (p.id === "db-" + work.pro_id) || p.name === work.pro_name);
+                  return (
+                    <div key={work.id} style={{ flexShrink: 0, width: 150, borderRadius: 12, overflow: "hidden", border: `1px solid ${GOLD}33`, background: DARK3 }}>
+                      <img src={work.image_url} alt={work.style_name} style={{ width: "100%", height: 120, objectFit: "cover", display: "block" }} />
+                      <div style={{ padding: "8px 10px" }}>
+                        <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginBottom: 2 }}>{work.style_name}</div>
+                        <div style={{ fontSize: 10, color: MUTED, marginBottom: 8 }}>by {work.pro_name}</div>
+                        <button onClick={() => { if (pro) { handleClose(); if (onBookPro) onBookPro(pro); } }} disabled={!pro} style={{ width: "100%", background: pro ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK2, border: "none", borderRadius: 8, color: pro ? "#0A0A0B" : MUTED, padding: "6px 0", fontSize: 11, fontWeight: 700, cursor: pro ? "pointer" : "default" }}>{pro ? "Book this pro" : "View style"}</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 1.5, margin: "10px 0 0" }}>
+                Actual work from real STYLEX professionals
+              </p>
+            </div>
+          )}
+
           {result.styles && result.styles.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>RECOMMENDED STYLES</div>
-              {/* Real photos of each recommended style (via /api/styleimage) */}
+              {/* Generic style examples (via /api/styleimage) */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
                 {result.styles.slice(0, 4).map(style => (
                   <StyleImage key={style} style={style} scanType={scanType} />
@@ -1653,6 +1693,137 @@ function BookingsScreen({ user, onLogin }) {
   );
 }
 
+// ─── PORTFOLIO UPLOAD MODAL ───
+// Lets a professional upload a real photo of their work. The file goes to
+// Supabase Storage (bucket "portfolio"), and a record is saved in the
+// `portfolio` table tagged with the pro + a style category, so the AI scanner
+// can later show this real work to clients and let them book this pro.
+function PortfolioUploadModal({ user, onClose }) {
+  const CATEGORIES = ["Hairstylist", "Barber", "Makeup Artist", "Nail Technician", "Lash Tech", "Skincare"];
+
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [styleName, setStyleName] = useState("");
+  const [category, setCategory] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef(null);
+
+  // Preload the pro's own category so it's pre-filled
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("category").eq("id", user.id).maybeSingle()
+      .then(({ data }) => { if (data && data.category) setCategory(data.category); });
+  }, [user]);
+
+  const handleFileChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { setError("Please choose an image file."); return; }
+    if (f.size > 5 * 1024 * 1024) { setError("Image is too large. Please use one under 5MB."); return; }
+    setError("");
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  };
+
+  const handleUpload = async () => {
+    setError("");
+    if (!file) { setError("Please choose a photo first."); return; }
+    if (!styleName.trim()) { setError("Please name the style (e.g. Knotless Braids)."); return; }
+    if (!category) { setError("Please choose a category."); return; }
+
+    setUploading(true);
+    try {
+      // 1) upload the file to Supabase Storage
+      const ext = file.name.split(".").pop();
+      const filePath = `${user.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("portfolio").upload(filePath, file);
+      if (upErr) { setError("Upload failed: " + upErr.message); setUploading(false); return; }
+
+      // 2) get the public URL for the uploaded file
+      const { data: urlData } = supabase.storage.from("portfolio").getPublicUrl(filePath);
+      const imageUrl = urlData.publicUrl;
+
+      // 3) save a record in the portfolio table
+      const { error: insErr } = await supabase.from("portfolio").insert({
+        pro_id: user.id,
+        pro_name: user.name,
+        category: category,
+        style_name: styleName.trim(),
+        image_url: imageUrl
+      });
+      if (insErr) { setError("Saved photo but couldn't record it: " + insErr.message); setUploading(false); return; }
+
+      setUploading(false);
+      setDone(true);
+      setTimeout(() => { setDone(false); onClose(); }, 2000);
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+      setUploading(false);
+    }
+  };
+
+  const labelStyle = { fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
+  const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 16, boxSizing: "border-box" };
+
+  if (done) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <div style={{ fontSize: 56, marginBottom: 14 }}>🎉</div>
+          <h3 style={{ color: GOLD, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Work Uploaded!</h3>
+          <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.6 }}>Clients can now discover this style — and book you for it.</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Upload Your Work 📸</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Show clients what you can do</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
+
+      {/* Photo picker / preview */}
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
+      <div onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ borderRadius: 14, border: `2px dashed ${preview ? GOLD : BORDER}`, background: DARK3, cursor: "pointer", marginBottom: 16, overflow: "hidden", minHeight: 180, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {preview ? (
+          <img src={preview} alt="preview" style={{ width: "100%", maxHeight: 260, objectFit: "cover", display: "block" }} />
+        ) : (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>📷</div>
+            <div style={{ color: TEXT, fontWeight: 600, fontSize: 14 }}>Tap to choose a photo</div>
+            <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>From your camera or gallery</div>
+          </div>
+        )}
+      </div>
+      {preview && (
+        <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ background: "none", border: "none", color: GOLD, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 14 }}>Change photo</button>
+      )}
+
+      <label style={labelStyle}>Style name</label>
+      <input value={styleName} onChange={(e) => setStyleName(e.target.value)} placeholder="e.g. Knotless Braids, Taper Fade" style={inputStyle} />
+
+      <label style={labelStyle}>Category</label>
+      <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+        <option value="">Select category...</option>
+        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+
+      <GoldBtn onClick={handleUpload} disabled={uploading} style={{ width: "100%", padding: "13px" }}>
+        {uploading ? "Uploading..." : "Upload Work 📸"}
+      </GoldBtn>
+    </Modal>
+  );
+}
+
 // ─── PROFILE SCREEN ───
 function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketplace, onOpenSubscription, realPros = [], onBookPro }) {
   const [showScanner, setShowScanner] = useState(false);
@@ -1778,24 +1949,7 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
       {showScanner && <AIScannerModal onClose={() => setShowScanner(false)} realPros={realPros} onBookPro={onBookPro} />}
       {showProductUpload && <ProductUploadModal user={user} onClose={() => setShowProductUpload(false)} />}
       {showCollab && <CollabModal user={user} onClose={() => setShowCollab(false)} />}
-      {showUpload && (
-        <Modal onClose={() => setShowUpload(false)}>
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📹</div>
-            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, marginBottom: 8 }}>Upload Content</h3>
-            <p style={{ color: MUTED, fontSize: 13, marginBottom: 20 }}>Share your work with thousands of clients</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-              {[{ icon: "🎬", label: "Video" }, { icon: "📸", label: "Photo" }, { icon: "🎵", label: "Reel" }, { icon: "⭕", label: "Story" }].map(type => (
-                <button key={type.label} onClick={() => setShowUpload(false)} style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "16px", cursor: "pointer" }}>
-                  <div style={{ fontSize: 28, marginBottom: 6 }}>{type.icon}</div>
-                  <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{type.label}</div>
-                </button>
-              ))}
-            </div>
-            <GoldBtn onClick={() => setShowUpload(false)} outline style={{ width: "100%" }}>Cancel</GoldBtn>
-          </div>
-        </Modal>
-      )}
+      {showUpload && <PortfolioUploadModal user={user} onClose={() => setShowUpload(false)} />}
       {isPro && (
         <div style={{ position: "fixed", bottom: 80, right: 20, zIndex: 200 }}>
           <button onClick={() => setShowUpload(true)} style={{ width: 60, height: 60, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, boxShadow: `0 4px 20px ${GOLD}66` }}>+</button>
