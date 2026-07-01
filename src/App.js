@@ -1503,14 +1503,174 @@ function MarketplaceScreen({ user, onLogin }) {
   );
 }
 
+// ─── CREATE POST MODAL ───
+// Pros create a feed post. Deploy 1: photo uploads. (Video added in Deploy 2.)
+// Saves the file to the "posts" storage bucket and a row in the "posts" table.
+function CreatePostModal({ user, onClose, onPosted }) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [caption, setCaption] = useState("");
+  const [category, setCategory] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef(null);
+
+  const CATEGORIES = ["Hair", "Makeup", "Barbing", "Nails", "Lashes", "Facial"];
+
+  // Pre-fill the pro's category
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("category").eq("id", user.id).maybeSingle()
+      .then(({ data }) => { if (data && data.category) setCategory(data.category); });
+  }, [user]);
+
+  const handleFileChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { setError("For now, please choose a photo. Video posting is coming next!"); return; }
+    if (f.size > 5 * 1024 * 1024) { setError("Image is too large. Please use one under 5MB."); return; }
+    setError("");
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  };
+
+  const handlePost = async () => {
+    setError("");
+    if (!file) { setError("Please choose a photo first."); return; }
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const filePath = `${user.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("posts").upload(filePath, file);
+      if (upErr) { setError("Upload failed: " + upErr.message); setUploading(false); return; }
+
+      const { data: urlData } = supabase.storage.from("posts").getPublicUrl(filePath);
+      const mediaUrl = urlData.publicUrl;
+
+      const { error: insErr } = await supabase.from("posts").insert({
+        pro_id: user.id,
+        pro_name: user.name,
+        media_type: "photo",
+        media_url: mediaUrl,
+        caption: caption.trim(),
+        category: category,
+        likes: 0,
+        comments: 0
+      });
+      if (insErr) { setError("Uploaded but couldn't save post: " + insErr.message); setUploading(false); return; }
+
+      setUploading(false);
+      setDone(true);
+      if (onPosted) onPosted();
+      setTimeout(() => { setDone(false); onClose(); }, 1600);
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+      setUploading(false);
+    }
+  };
+
+  const labelStyle = { fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
+  const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 16, boxSizing: "border-box" };
+
+  if (done) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <div style={{ fontSize: 56, marginBottom: 14 }}>🎉</div>
+          <h3 style={{ color: GOLD, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Posted!</h3>
+          <p style={{ color: MUTED, fontSize: 13 }}>Your post is now live in the feed.</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Create Post</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Share your work with the feed</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
+
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
+
+      {preview ? (
+        <div style={{ marginBottom: 16, borderRadius: 14, overflow: "hidden", border: `1px solid ${BORDER}`, position: "relative" }}>
+          <img src={preview} alt="preview" style={{ width: "100%", maxHeight: 300, objectFit: "cover", display: "block" }} />
+          <button onClick={() => { setFile(null); setPreview(null); }} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", border: "none", borderRadius: 8, color: TEXT, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Change</button>
+        </div>
+      ) : (
+        <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ width: "100%", padding: "40px 20px", borderRadius: 14, background: DARK3, border: `2px dashed ${BORDER}`, cursor: "pointer", marginBottom: 16, color: MUTED }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>📸</div>
+          <div style={{ fontSize: 14, color: TEXT, fontWeight: 600, marginBottom: 4 }}>Tap to choose a photo</div>
+          <div style={{ fontSize: 11 }}>On your phone you can take a new photo too</div>
+        </button>
+      )}
+
+      <label style={labelStyle}>Caption</label>
+      <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Say something about this look..." style={inputStyle} />
+
+      <label style={labelStyle}>Category</label>
+      <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+        <option value="">Select category...</option>
+        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+
+      <GoldBtn onClick={handlePost} disabled={uploading} style={{ width: "100%", padding: "13px" }}>
+        {uploading ? "Posting..." : "Post to Feed 🚀"}
+      </GoldBtn>
+      <p style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10 }}>📹 Video posting arrives in the next update</p>
+    </Modal>
+  );
+}
+
 // ─── HOME SCREEN ───
-function HomeScreen({ user, onProfile }) {
+function HomeScreen({ user, onProfile, realPros = [] }) {
   const [activeCategory, setActiveCategory] = useState("All");
   const [liked, setLiked] = useState({});
   const [saved, setSaved] = useState({});
   const [bookModal, setBookModal] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
 
-  const filtered = activeCategory === "All" ? feedVideos : feedVideos.filter(f => f.pro.category.toLowerCase().includes(activeCategory.toLowerCase()));
+  const loadPosts = () => {
+    setLoadingPosts(true);
+    supabase.from("posts").select("*").order("created_at", { ascending: false }).limit(50)
+      .then(({ data }) => { setPosts(data || []); setLoadingPosts(false); });
+  };
+  useEffect(() => { loadPosts(); }, []);
+
+  // Find the matching pro object for a post (so Book/profile work)
+  const findPro = (post) => {
+    const all = [...realPros, ...professionals];
+    return all.find(p => p.id === "db-" + post.pro_id || p.name === post.pro_name);
+  };
+
+  // Real posts, filtered by category
+  const realFiltered = activeCategory === "All"
+    ? posts
+    : posts.filter(p => (p.category || "").toLowerCase().includes(activeCategory.toLowerCase()));
+
+  // Show fake demo posts only when there are no real posts yet (so a new app isn't empty)
+  const demoFiltered = activeCategory === "All" ? feedVideos : feedVideos.filter(f => f.pro.category.toLowerCase().includes(activeCategory.toLowerCase()));
+  const showDemo = posts.length === 0;
+
+  const isPro = user && user.type === "professional";
+
+  const toggleLike = async (post) => {
+    const isLiked = liked[post.id];
+    setLiked(p => ({ ...p, [post.id]: !isLiked }));
+    // persist like count on the post
+    const newCount = (post.likes || 0) + (isLiked ? -1 : 1);
+    await supabase.from("posts").update({ likes: newCount }).eq("id", post.id);
+    setPosts(ps => ps.map(p => p.id === post.id ? { ...p, likes: newCount } : p));
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: DARK }}>
@@ -1520,6 +1680,7 @@ function HomeScreen({ user, onProfile }) {
           <span style={{ fontSize: 10, color: MUTED, marginLeft: 8, letterSpacing: 2 }}>BEAUTY MARKETPLACE</span>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {isPro && <button onClick={() => setShowCreate(true)} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 8, color: "#0A0A0B", padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Post</button>}
           {user && <Avatar initials={user.name.slice(0, 2).toUpperCase()} size={32} color={GOLD} />}
           <button style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>🔔</button>
         </div>
@@ -1532,15 +1693,56 @@ function HomeScreen({ user, onProfile }) {
       </div>
 
       <div style={{ padding: "0 20px 100px" }}>
-        {filtered.map((item) => (
-          <div key={item.id} style={{ borderRadius: 20, overflow: "hidden", marginBottom: 20, border: `1px solid ${BORDER}` }}>
+        {loadingPosts && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading feed...</div>}
+
+        {/* REAL POSTS */}
+        {realFiltered.map((post) => {
+          const pro = findPro(post);
+          return (
+            <div key={post.id} style={{ borderRadius: 20, overflow: "hidden", marginBottom: 20, border: `1px solid ${BORDER}` }}>
+              <div style={{ position: "relative", cursor: pro ? "pointer" : "default", background: "#000" }} onClick={() => pro && onProfile(pro)}>
+                {post.media_type === "video" ? (
+                  <video src={post.media_url} controls playsInline style={{ width: "100%", maxHeight: 420, display: "block", background: "#000" }} />
+                ) : (
+                  <img src={post.media_url} alt={post.caption || "post"} style={{ width: "100%", maxHeight: 420, objectFit: "cover", display: "block" }} />
+                )}
+                {post.caption && (
+                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(0,0,0,0.85))", padding: "30px 14px 12px", pointerEvents: "none" }}>
+                    <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 15, color: TEXT }}>{post.caption}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Avatar initials={(post.pro_name || "PR").slice(0, 2).toUpperCase()} size={28} color={GOLD} />
+                      <span style={{ fontSize: 12, color: `${TEXT}cc` }}>{post.pro_name}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div style={{ background: CARD, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", gap: 18 }}>
+                  <button onClick={() => toggleLike(post)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
+                    <span style={{ fontSize: 16 }}>{liked[post.id] ? "❤️" : "🤍"}</span>{formatNum(post.likes || 0)}
+                  </button>
+                  <button style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
+                    <span style={{ fontSize: 16 }}>💬</span>{formatNum(post.comments || 0)}
+                  </button>
+                  <button onClick={() => setSaved(p => ({ ...p, [post.id]: !p[post.id] }))} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
+                    <span style={{ fontSize: 16 }}>{saved[post.id] ? "🔖" : "📎"}</span>
+                  </button>
+                </div>
+                {pro && <GoldBtn onClick={() => setBookModal(pro)} style={{ padding: "7px 16px", fontSize: 12 }}>Book Now</GoldBtn>}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* DEMO POSTS (only when no real posts exist yet) */}
+        {showDemo && demoFiltered.map((item) => (
+          <div key={"demo-" + item.id} style={{ borderRadius: 20, overflow: "hidden", marginBottom: 20, border: `1px solid ${BORDER}` }}>
             <div style={{ background: item.gradient, height: 260, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={() => onProfile(item.pro)}>
               <div style={{ fontSize: 64, opacity: 0.4 }}>{item.emoji}</div>
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.8))" }} />
               <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 54, height: 54, borderRadius: "50%", background: "rgba(0,0,0,0.5)", border: `2px solid ${GOLD}88`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ color: GOLD, fontSize: 18, marginLeft: 4 }}>▶</span>
               </div>
-              <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: TEXT }}>{item.duration}</div>
               <div style={{ position: "absolute", bottom: 14, left: 14, right: 14 }}>
                 <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 15, color: TEXT }}>{item.title}</p>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1566,8 +1768,16 @@ function HomeScreen({ user, onProfile }) {
             </div>
           </div>
         ))}
+
+        {!loadingPosts && realFiltered.length === 0 && !showDemo && (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
+            <p style={{ color: MUTED, fontSize: 13 }}>No posts in this category yet</p>
+          </div>
+        )}
       </div>
       {bookModal && <BookingModal pro={bookModal} user={user} onClose={() => setBookModal(null)} />}
+      {showCreate && <CreatePostModal user={user} onClose={() => setShowCreate(false)} onPosted={loadPosts} />}
     </div>
   );
 }
@@ -1841,6 +2051,7 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
   const [showCollab, setShowCollab] = useState(false);
   const [myVerified, setMyVerified] = useState(false);
   const [myBoosted, setMyBoosted] = useState(false);
+  const [followingPros, setFollowingPros] = useState([]);
 
   // Load this user's own verified/boost status so we can show their badge
   useEffect(() => {
@@ -1851,6 +2062,18 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
           setMyVerified(data.is_verified === true);
           setMyBoosted(data.is_boosted === true);
         }
+      });
+  }, [user]);
+
+  // Load the pros this user is following (for clients)
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("follows").select("pro_id").eq("follower_id", user.id)
+      .then(async ({ data }) => {
+        if (!data || data.length === 0) { setFollowingPros([]); return; }
+        const ids = data.map(f => f.pro_id);
+        const { data: pros } = await supabase.from("profiles").select("id, full_name, category, location").in("id", ids);
+        setFollowingPros(pros || []);
       });
   }, [user]);
 
@@ -1921,6 +2144,22 @@ function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketpl
             <div style={{ fontSize: 24, fontWeight: 800, color: GOLD }}>₦0</div>
           </div>
           <button style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 8, color: GOLD, padding: "8px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Withdraw</button>
+        </div>
+      )}
+
+      {/* Following list (pros the user follows) */}
+      {followingPros.length > 0 && (
+        <div style={{ margin: "16px 20px 0" }}>
+          <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>FOLLOWING ({followingPros.length})</div>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 4 }}>
+            {followingPros.map(p => (
+              <div key={p.id} style={{ flexShrink: 0, width: 90, textAlign: "center" }}>
+                <Avatar initials={(p.full_name || "PR").slice(0, 2).toUpperCase()} size={56} color={GOLD} style={{ margin: "0 auto 6px" }} />
+                <div style={{ fontSize: 11, color: TEXT, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.full_name}</div>
+                <div style={{ fontSize: 10, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.category}</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -2281,7 +2520,7 @@ export default function StylexApp() {
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight: "100vh", position: "relative", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-      {activeTab === "home" && <HomeScreen user={user} onProfile={(pro) => setViewingPro(pro)} />}
+      {activeTab === "home" && <HomeScreen user={user} realPros={realPros} onProfile={(pro) => setViewingPro(pro)} />}
       {activeTab === "explore" && <ExploreScreen user={user} realPros={realPros} onProfile={(pro) => setViewingPro(pro)} />}
       {activeTab === "marketplace" && <MarketplaceScreen user={user} onLogin={() => setActiveTab("profile")} />}
       {activeTab === "bookings" && <BookingsScreen user={user} onLogin={() => setActiveTab("profile")} />}
