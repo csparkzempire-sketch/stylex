@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE ───
@@ -19,6 +19,9 @@ const TEXT = "#F0EDE8";
 const MUTED = "#888898";
 const GREEN = "#4CAF50";
 const RED = "#FF5555";
+
+// ─── COMMISSION ───
+const PRODUCT_COMMISSION_RATE = 0.05; // 5% on every product sold
 
 // ─── DEMO DATA ───
 const professionals = [
@@ -70,6 +73,12 @@ function Modal({ onClose, children }) {
       <div onClick={e => e.stopPropagation()} style={{ background: DARK2, border: `1px solid ${BORDER}`, borderRadius: 20, padding: 28, maxWidth: 480, width: "90%", maxHeight: "90vh", overflowY: "auto", boxShadow: `0 0 60px ${GOLD}15` }}>{children}</div>
     </div>
   );
+}
+
+// ─── VERIFICATION CHECK (shared helper) ───
+function VerifiedTick({ verified, size = 13 }) {
+  if (!verified) return null;
+  return <span style={{ color: GOLD, fontSize: size }}>✓</span>;
 }
 
 // ─── INPUT FIELD ───
@@ -390,6 +399,298 @@ function AuthScreen({ onAuthenticated }) {
   );
 }
 
+// ─── SUBSCRIPTION MODAL (Verification + Boost) ───
+// Feature 2: pros subscribe for a verification badge and/or boost.
+// NOTE: actual recurring billing requires Flutterwave/Paystack to be connected.
+// This saves the chosen plan to Supabase so the badge/boost display works;
+// the payment button is wired to a placeholder ready for Flutterwave.
+function SubscriptionModal({ user, onClose, onUpdated }) {
+  const [planType, setPlanType] = useState("verification"); // verification | boost
+  const [billing, setBilling] = useState("monthly"); // monthly | annually
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const PRICING = {
+    verification: { monthly: 2500, annually: 25000 },
+    boost: { monthly: 5000, annually: 50000 },
+  };
+
+  const price = PRICING[planType][billing];
+
+  const handleSubscribe = async () => {
+    setSaving(true);
+    // Calculate expiry date
+    const now = new Date();
+    const expires = new Date(now);
+    if (billing === "monthly") expires.setMonth(expires.getMonth() + 1);
+    else expires.setFullYear(expires.getFullYear() + 1);
+
+    const updates = {};
+    if (planType === "verification") {
+      updates.is_verified = true;
+      updates.verification_plan = billing;
+      updates.verification_expires = expires.toISOString();
+    } else {
+      updates.is_boosted = true;
+      updates.boost_plan = billing;
+      updates.boost_expires = expires.toISOString();
+    }
+
+    // TODO: When Flutterwave is connected, trigger payment here BEFORE saving.
+    const { error } = await supabase.from("profiles").update(updates).eq("id", user.id);
+    setSaving(false);
+    if (!error) {
+      setDone(true);
+      if (onUpdated) onUpdated();
+      setTimeout(() => { setDone(false); onClose(); }, 2200);
+    }
+  };
+
+  if (done) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <div style={{ fontSize: 56, marginBottom: 14 }}>{planType === "verification" ? "✅" : "🚀"}</div>
+          <h3 style={{ color: GOLD, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>
+            {planType === "verification" ? "You're Verified!" : "Boost Activated!"}
+          </h3>
+          <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.6 }}>
+            {planType === "verification"
+              ? "Your verification badge is now active on your profile."
+              : "Your profile and videos will now reach more people."}
+          </p>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Grow Your Business 🚀</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Get verified & reach more clients</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {/* Plan type selector */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+        <button onClick={() => setPlanType("verification")} style={{ flex: 1, padding: "14px 10px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: planType === "verification" ? `${GOLD}15` : DARK3, border: `1.5px solid ${planType === "verification" ? GOLD : BORDER}` }}>
+          <div style={{ fontSize: 22, marginBottom: 4 }}>✅</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>Verification</div>
+          <div style={{ fontSize: 11, color: MUTED }}>Trusted badge</div>
+        </button>
+        <button onClick={() => setPlanType("boost")} style={{ flex: 1, padding: "14px 10px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: planType === "boost" ? `${GOLD}15` : DARK3, border: `1.5px solid ${planType === "boost" ? GOLD : BORDER}` }}>
+          <div style={{ fontSize: 22, marginBottom: 4 }}>🚀</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>Boost</div>
+          <div style={{ fontSize: 11, color: MUTED }}>More views & bookings</div>
+        </button>
+      </div>
+
+      {/* What you get */}
+      <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${BORDER}` }}>
+        <div style={{ fontSize: 12, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>WHAT YOU GET</div>
+        {(planType === "verification"
+          ? ["Gold verified badge on your profile", "Higher trust with clients", "Priority in search results"]
+          : ["Your videos shown to more people", "Featured placement in Explore", "More profile views & bookings"]
+        ).map(item => (
+          <div key={item} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ color: GOLD, fontSize: 13 }}>✓</span>
+            <span style={{ fontSize: 13, color: TEXT }}>{item}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Billing toggle */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+        <button onClick={() => setBilling("monthly")} style={{ flex: 1, padding: "14px", borderRadius: 12, cursor: "pointer", background: billing === "monthly" ? `${GOLD}15` : DARK3, border: `1.5px solid ${billing === "monthly" ? GOLD : BORDER}` }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Monthly</div>
+          <div style={{ fontSize: 13, color: GOLD, fontWeight: 700, marginTop: 4 }}>₦{PRICING[planType].monthly.toLocaleString()}<span style={{ fontSize: 11, color: MUTED }}>/mo</span></div>
+        </button>
+        <button onClick={() => setBilling("annually")} style={{ flex: 1, padding: "14px", borderRadius: 12, cursor: "pointer", position: "relative", background: billing === "annually" ? `${GOLD}15` : DARK3, border: `1.5px solid ${billing === "annually" ? GOLD : BORDER}` }}>
+          <div style={{ position: "absolute", top: -8, right: 8, background: GREEN, color: "#000", fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 6 }}>SAVE 17%</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Annually</div>
+          <div style={{ fontSize: 13, color: GOLD, fontWeight: 700, marginTop: 4 }}>₦{PRICING[planType].annually.toLocaleString()}<span style={{ fontSize: 11, color: MUTED }}>/yr</span></div>
+        </button>
+      </div>
+
+      <GoldBtn onClick={handleSubscribe} disabled={saving} style={{ width: "100%", padding: "14px" }}>
+        {saving ? "Processing..." : `Subscribe • ₦${price.toLocaleString()}`}
+      </GoldBtn>
+      <p style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
+        Payment via Flutterwave (coming soon). Your plan activates immediately for now.
+      </p>
+    </Modal>
+  );
+}
+
+// ─── PRO DASHBOARD ───
+// Where a logged-in professional sets up their business profile & pricing.
+function ProDashboard({ user, onClose, onOpenSubscription }) {
+  const CATEGORIES = ["Hairstylist", "Barber", "Makeup Artist", "Nail Technician", "Lash Tech", "Skincare"];
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const [category, setCategory] = useState("");
+  const [bio, setBio] = useState("");
+  const [location, setLocation] = useState("");
+  const [phone, setPhone] = useState("");
+  const [services, setServices] = useState("");
+  const [shopPrice, setShopPrice] = useState("");
+  const [mobilePrice, setMobilePrice] = useState("");
+  const [offersShop, setOffersShop] = useState(true);
+  const [offersMobile, setOffersMobile] = useState(true);
+  const [isAvailable, setIsAvailable] = useState(true);
+  const [isVerified, setIsVerified] = useState(false);
+  const [isBoosted, setIsBoosted] = useState(false);
+
+  // Load existing profile data when the dashboard opens
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) { setLoading(false); return; }
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      if (data) {
+        setCategory(data.category || "");
+        setBio(data.bio || "");
+        setLocation(data.location || "");
+        setPhone(data.phone || "");
+        setServices(data.services || "");
+        setShopPrice(data.shop_price ? String(data.shop_price) : "");
+        setMobilePrice(data.mobile_price ? String(data.mobile_price) : "");
+        setOffersShop(data.offers_shop !== false);
+        setOffersMobile(data.offers_mobile !== false);
+        setIsAvailable(data.is_available !== false);
+        setIsVerified(data.is_verified === true);
+        setIsBoosted(data.is_boosted === true);
+      }
+      setLoading(false);
+    };
+    loadProfile();
+  }, [user]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    await supabase
+      .from("profiles")
+      .update({
+        category,
+        bio,
+        location,
+        phone,
+        services,
+        shop_price: parseInt(shopPrice) || 0,
+        mobile_price: parseInt(mobilePrice) || 0,
+        offers_shop: offersShop,
+        offers_mobile: offersMobile,
+        is_available: isAvailable,
+      })
+      .eq("id", user.id);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  const labelStyle = { fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
+  const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 16, boxSizing: "border-box" };
+
+  if (loading) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0", color: MUTED }}>Loading your dashboard...</div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Pro Dashboard</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Set up your business profile</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {/* Verification + Boost status / upsell */}
+      <div style={{ background: `linear-gradient(135deg, ${GOLD}22, ${DARK3})`, borderRadius: 12, padding: 16, marginBottom: 18, border: `1px solid ${GOLD}33` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 4 }}>
+              {isVerified ? "✅ Verified Pro" : "Get Verified"}
+              {isBoosted && <span style={{ marginLeft: 8, fontSize: 11, color: GREEN }}>🚀 Boosted</span>}
+            </div>
+            <div style={{ fontSize: 11, color: MUTED }}>Badge & boost to reach more clients</div>
+          </div>
+          <button onClick={onOpenSubscription} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 8, color: "#000", padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+            {isVerified || isBoosted ? "Manage" : "Upgrade"}
+          </button>
+        </div>
+      </div>
+
+      <label style={labelStyle}>Your specialty</label>
+      <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+        <option value="">Select your specialty...</option>
+        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+
+      <label style={labelStyle}>Location (city)</label>
+      <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Lagos" style={inputStyle} />
+
+      <label style={labelStyle}>Phone number</label>
+      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 0801 234 5678" style={inputStyle} />
+
+      <label style={labelStyle}>Short bio</label>
+      <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Tell clients about yourself..." rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+      <label style={labelStyle}>Services you offer (comma separated)</label>
+      <input value={services} onChange={(e) => setServices(e.target.value)} placeholder="e.g. Braids, Weave, Locs" style={inputStyle} />
+
+      <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${BORDER}` }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 14 }}>Pricing</div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: TEXT }}>🏪 I offer shop visits</span>
+          <button onClick={() => setOffersShop(!offersShop)} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: offersShop ? GOLD : BORDER, position: "relative", transition: "0.2s" }}>
+            <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: offersShop ? 23 : 3, transition: "0.2s" }} />
+          </button>
+        </div>
+        {offersShop && (
+          <input value={shopPrice} onChange={(e) => setShopPrice(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Shop price (₦)" style={inputStyle} />
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: TEXT }}>🚗 I offer mobile service</span>
+          <button onClick={() => setOffersMobile(!offersMobile)} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: offersMobile ? GOLD : BORDER, position: "relative", transition: "0.2s" }}>
+            <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: offersMobile ? 23 : 3, transition: "0.2s" }} />
+          </button>
+        </div>
+        {offersMobile && (
+          <input value={mobilePrice} onChange={(e) => setMobilePrice(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Mobile price (₦)" style={{ ...inputStyle, marginBottom: 0 }} />
+        )}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, padding: "0 4px" }}>
+        <span style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>Available for bookings</span>
+        <button onClick={() => setIsAvailable(!isAvailable)} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: isAvailable ? GOLD : BORDER, position: "relative", transition: "0.2s" }}>
+          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: isAvailable ? 23 : 3, transition: "0.2s" }} />
+        </button>
+      </div>
+
+      <GoldBtn onClick={handleSave} style={{ width: "100%", opacity: saving ? 0.6 : 1 }}>
+        {saving ? "Saving..." : saved ? "Saved ✅" : "Save Profile"}
+      </GoldBtn>
+    </Modal>
+  );
+}
+
 // ─── BOOKING MODAL ───
 function BookingModal({ pro, onClose, user }) {
   const [step, setStep] = useState(1);
@@ -402,7 +703,7 @@ function BookingModal({ pro, onClose, user }) {
 
   const today = new Date();
   const days = Array.from({ length: 14 }, (_, i) => { const d = new Date(today); d.setDate(today.getDate() + i); return d; });
-  const COMMISSION_RATE = 0.20; // Your 20% commission
+  const COMMISSION_RATE = 0.20;
   const basePrice = serviceType === "mobile" ? pro.mobilePrice : pro.shopPrice;
   const servicePrice = basePrice + selectedService * 2000;
   const commission = Math.round(servicePrice * COMMISSION_RATE);
@@ -492,6 +793,22 @@ function BookingModal({ pro, onClose, user }) {
 
       {step === 3 && (
         <div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, color: MUTED, marginBottom: 8 }}>Choose service type</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {pro.offersShop && (
+                <button onClick={() => setServiceType("shop")} style={{ flex: 1, padding: "12px", borderRadius: 10, cursor: "pointer", background: serviceType === "shop" ? GOLD : DARK3, color: serviceType === "shop" ? "#000" : TEXT, border: `1px solid ${serviceType === "shop" ? GOLD : BORDER}`, fontWeight: 600, fontSize: 13 }}>
+                  🏪 Shop Visit<br /><span style={{ fontSize: 11, fontWeight: 400 }}>₦{pro.shopPrice.toLocaleString()}</span>
+                </button>
+              )}
+              {pro.offersMobile && (
+                <button onClick={() => setServiceType("mobile")} style={{ flex: 1, padding: "12px", borderRadius: 10, cursor: "pointer", background: serviceType === "mobile" ? GOLD : DARK3, color: serviceType === "mobile" ? "#000" : TEXT, border: `1px solid ${serviceType === "mobile" ? GOLD : BORDER}`, fontWeight: 600, fontSize: 13 }}>
+                  🚗 Mobile<br /><span style={{ fontSize: 11, fontWeight: 400 }}>₦{pro.mobilePrice.toLocaleString()}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
             {[{ id: "flutterwave", label: "Flutterwave", sub: "Card, Bank Transfer, USSD" }, { id: "paystack", label: "Paystack", sub: "Debit/Credit Card" }, { id: "wallet", label: "STYLEX Wallet", sub: "Balance: ₦0.00" }].map(method => (
               <button key={method.id} onClick={() => setPayMethod(method.id)} style={{ background: payMethod === method.id ? `${GOLD}15` : DARK3, border: payMethod === method.id ? `1.5px solid ${GOLD}` : `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -503,21 +820,7 @@ function BookingModal({ pro, onClose, user }) {
               </button>
             ))}
           </div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 13, color: MUTED, marginBottom: 8 }}>Choose service type</div>
-            <div style={{ display: "flex", gap: 10 }}>
-              {pro.offersShop && (
-                <button onClick={() => setServiceType("shop")} style={{ flex: 1, padding: "12px", borderRadius: 10, cursor: "pointer", background: serviceType === "shop" ? GOLD : DARK3, color: serviceType === "shop" ? "#000" : TEXT, border: `1px solid ${serviceType === "shop" ? GOLD : BORDER}`, fontWeight: 600, fontSize: 13 }}>
-                  🏪 Shop Visit<br/><span style={{ fontSize: 11, fontWeight: 400 }}>₦{pro.shopPrice.toLocaleString()}</span>
-                </button>
-              )}
-              {pro.offersMobile && (
-                <button onClick={() => setServiceType("mobile")} style={{ flex: 1, padding: "12px", borderRadius: 10, cursor: "pointer", background: serviceType === "mobile" ? GOLD : DARK3, color: serviceType === "mobile" ? "#000" : TEXT, border: `1px solid ${serviceType === "mobile" ? GOLD : BORDER}`, fontWeight: 600, fontSize: 13 }}>
-                  🚗 Mobile<br/><span style={{ fontSize: 11, fontWeight: 400 }}>₦{pro.mobilePrice.toLocaleString()}</span>
-                </button>
-              )}
-            </div>
-          </div>
+
           <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 18, border: `1px solid ${BORDER}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span style={{ fontSize: 13, color: MUTED }}>Service</span>
@@ -540,6 +843,7 @@ function BookingModal({ pro, onClose, user }) {
               <span style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>₦{totalPrice.toLocaleString()}</span>
             </div>
           </div>
+
           <div style={{ display: "flex", gap: 10 }}>
             <GoldBtn onClick={() => setStep(2)} outline style={{ flex: 1 }}>← Back</GoldBtn>
             <GoldBtn onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm Booking ✅</GoldBtn>
@@ -560,6 +864,493 @@ function BookingModal({ pro, onClose, user }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+// ─── AI SCANNER (REAL CAMERA + CLAUDE VISION) ───
+// Feature 1: opens the real camera, captures a photo, sends it to /api/scan
+// (a serverless function that calls Claude's vision API) for real analysis.
+function AIScannerModal({ onClose }) {
+  const [step, setStep] = useState("choose"); // choose | camera | analyzing | results | error
+  const [scanType, setScanType] = useState(null);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [result, setResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const scanTypes = [
+    { id: "face", icon: "😊", label: "Face Shape", desc: "Find makeup & skincare styles" },
+    { id: "hair", icon: "💇", label: "Hair Type", desc: "Discover perfect hairstyles" },
+    { id: "nails", icon: "💅", label: "Nail Shape", desc: "Get nail art recommendations" },
+    { id: "skin", icon: "✨", label: "Skin Tone", desc: "Find your perfect look" },
+  ];
+
+  // Stop the camera stream
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  };
+
+  // Clean up camera when modal closes
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
+
+  const startCamera = async (type) => {
+    setScanType(type);
+    setStep("camera");
+    setErrorMsg("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false
+      });
+      streamRef.current = stream;
+      // Wait a tick for the video element to mount
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }, 100);
+    } catch (err) {
+      setErrorMsg("Could not access camera. Please allow camera permission and try again.");
+      setStep("error");
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const w = video.videoWidth || 480;
+    const h = video.videoHeight || 480;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    setCapturedImage(dataUrl);
+    stopCamera();
+    analyzeImage(dataUrl);
+  };
+
+  const analyzeImage = async (dataUrl) => {
+    setStep("analyzing");
+    setErrorMsg("");
+    try {
+      // strip the "data:image/jpeg;base64," prefix
+      const base64 = dataUrl.split(",")[1];
+      const response = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanType, image: base64 })
+      });
+      const data = await response.json();
+      if (data.error) {
+        setErrorMsg(data.error);
+        setStep("error");
+        return;
+      }
+      setResult(data);
+      setStep("results");
+    } catch (err) {
+      setErrorMsg("Something went wrong analyzing your photo. Please try again.");
+      setStep("error");
+    }
+  };
+
+  const reset = () => {
+    stopCamera();
+    setScanType(null);
+    setCapturedImage(null);
+    setResult(null);
+    setErrorMsg("");
+    setStep("choose");
+  };
+
+  const handleClose = () => { stopCamera(); onClose(); };
+
+  return (
+    <Modal onClose={handleClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>AI Style Scanner ✨</h3>
+          <p style={{ color: MUTED, fontSize: 12, margin: 0 }}>Real AI analysis from your camera</p>
+        </div>
+        <button onClick={handleClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {/* Hidden canvas for capture */}
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      {step === "choose" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {scanTypes.map(s => (
+            <button key={s.id} onClick={() => startCamera(s.id)} style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "18px 14px", cursor: "pointer", textAlign: "center" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>{s.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 11, color: MUTED }}>{s.desc}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {step === "camera" && (
+        <div style={{ textAlign: "center" }}>
+          <div style={{ borderRadius: 16, overflow: "hidden", border: `2px solid ${GOLD}44`, marginBottom: 16, background: "#000" }}>
+            <video ref={videoRef} playsInline muted style={{ width: "100%", display: "block", transform: "scaleX(-1)" }} />
+          </div>
+          <p style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>
+            Position your {scanType === "face" ? "face" : scanType === "hair" ? "hair" : scanType === "nails" ? "hand/nails" : "face"} in the frame
+          </p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <GoldBtn onClick={reset} outline style={{ flex: 1 }}>Cancel</GoldBtn>
+            <GoldBtn onClick={capturePhoto} style={{ flex: 2 }}>📸 Capture & Analyze</GoldBtn>
+          </div>
+        </div>
+      )}
+
+      {step === "analyzing" && (
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          {capturedImage && (
+            <img src={capturedImage} alt="captured" style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 16, border: `2px solid ${GOLD}44`, marginBottom: 16, transform: "scaleX(-1)" }} />
+          )}
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🤖</div>
+          <div style={{ color: GOLD, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Analyzing your photo...</div>
+          <div style={{ color: MUTED, fontSize: 12 }}>Our AI is studying your {scanType}</div>
+        </div>
+      )}
+
+      {step === "results" && result && (
+        <div>
+          <div style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 16, marginBottom: 16, textAlign: "center" }}>
+            {capturedImage && (
+              <img src={capturedImage} alt="you" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: "50%", border: `2px solid ${GOLD}`, marginBottom: 10, transform: "scaleX(-1)" }} />
+            )}
+            <div style={{ fontWeight: 800, fontSize: 16, color: GOLD, marginBottom: 6 }}>{result.type}</div>
+            <div style={{ fontSize: 13, color: `${TEXT}99`, lineHeight: 1.6 }}>{result.description}</div>
+          </div>
+          {result.styles && result.styles.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>RECOMMENDED STYLES</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {result.styles.map(style => (
+                  <span key={style} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 20, padding: "6px 14px", fontSize: 12, color: GOLD, fontWeight: 600 }}>{style}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {result.tips && (
+            <div style={{ background: DARK3, borderRadius: 12, padding: 14, marginBottom: 16, border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>💡 TIP</div>
+              <div style={{ fontSize: 13, color: `${TEXT}cc`, lineHeight: 1.6 }}>{result.tips}</div>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <GoldBtn onClick={reset} outline style={{ flex: 1 }}>Scan Again</GoldBtn>
+            <GoldBtn onClick={handleClose} style={{ flex: 1 }}>Done ✨</GoldBtn>
+          </div>
+        </div>
+      )}
+
+      {step === "error" && (
+        <div style={{ textAlign: "center", padding: "20px 0" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>😕</div>
+          <div style={{ color: RED, fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Scan Failed</div>
+          <p style={{ color: MUTED, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>{errorMsg}</p>
+          <GoldBtn onClick={reset} style={{ width: "100%" }}>Try Again</GoldBtn>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ─── PRODUCT UPLOAD MODAL ───
+// Feature 3a: both pros and clients can list products. 5% commission applies.
+function ProductUploadModal({ user, onClose, onUploaded }) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
+  const [productCategory, setProductCategory] = useState("");
+  const [emoji, setEmoji] = useState("🛍️");
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const PRODUCT_CATEGORIES = ["Hair Products", "Makeup", "Skincare", "Nails", "Tools & Accessories", "Other"];
+  const EMOJIS = ["🛍️", "💄", "💅", "🧴", "💇", "✨", "🪮", "🧼", "💎", "🎀"];
+
+  const handleUpload = async () => {
+    setError("");
+    if (!name.trim() || !price || !productCategory) {
+      setError("Please fill in name, price and category.");
+      return;
+    }
+    setSaving(true);
+    const priceNum = parseInt(price) || 0;
+    const commission = Math.round(priceNum * PRODUCT_COMMISSION_RATE);
+    const { error: insErr } = await supabase.from("products").insert({
+      seller_id: user.id,
+      seller_name: user.name,
+      seller_type: user.type,
+      name: name.trim(),
+      price: priceNum,
+      commission: commission,
+      description: description.trim(),
+      category: productCategory,
+      emoji: emoji,
+      status: "active"
+    });
+    setSaving(false);
+    if (insErr) { setError(insErr.message); return; }
+    setDone(true);
+    if (onUploaded) onUploaded();
+    setTimeout(() => { setDone(false); onClose(); }, 1800);
+  };
+
+  const labelStyle = { fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
+  const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 16, boxSizing: "border-box" };
+
+  if (done) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <div style={{ fontSize: 56, marginBottom: 14 }}>🎉</div>
+          <h3 style={{ color: GOLD, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Product Listed!</h3>
+          <p style={{ color: MUTED, fontSize: 13 }}>Your product is now live in the marketplace.</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  const priceNum = parseInt(price) || 0;
+  const commission = Math.round(priceNum * PRODUCT_COMMISSION_RATE);
+  const youReceive = priceNum - commission;
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>List a Product</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Sell to the STYLEX community</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
+
+      <label style={labelStyle}>Product image</label>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+        {EMOJIS.map(e => (
+          <button key={e} onClick={() => setEmoji(e)} style={{ width: 42, height: 42, borderRadius: 10, fontSize: 20, cursor: "pointer", background: emoji === e ? `${GOLD}22` : DARK3, border: `1.5px solid ${emoji === e ? GOLD : BORDER}` }}>{e}</button>
+        ))}
+      </div>
+
+      <label style={labelStyle}>Product name</label>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Argan Hair Oil 100ml" style={inputStyle} />
+
+      <label style={labelStyle}>Category</label>
+      <select value={productCategory} onChange={(e) => setProductCategory(e.target.value)} style={inputStyle}>
+        <option value="">Select category...</option>
+        {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+
+      <label style={labelStyle}>Price (₦)</label>
+      <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9]/g, ""))} placeholder="e.g. 5000" style={inputStyle} />
+
+      <label style={labelStyle}>Description</label>
+      <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your product..." rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+      {priceNum > 0 && (
+        <div style={{ background: DARK3, borderRadius: 12, padding: 14, marginBottom: 16, border: `1px solid ${BORDER}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: MUTED }}>Listing price</span>
+            <span style={{ fontSize: 12, color: TEXT }}>₦{priceNum.toLocaleString()}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: MUTED }}>STYLEX fee (5%)</span>
+            <span style={{ fontSize: 12, color: TEXT }}>₦{commission.toLocaleString()}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${BORDER}`, paddingTop: 6 }}>
+            <span style={{ fontSize: 13, color: TEXT, fontWeight: 700 }}>You receive</span>
+            <span style={{ fontSize: 13, color: GOLD, fontWeight: 700 }}>₦{youReceive.toLocaleString()}</span>
+          </div>
+        </div>
+      )}
+
+      <GoldBtn onClick={handleUpload} disabled={saving} style={{ width: "100%", padding: "13px" }}>
+        {saving ? "Listing..." : "List Product 🛍️"}
+      </GoldBtn>
+    </Modal>
+  );
+}
+
+// ─── COLLABORATION / ADVERTISE MODAL ───
+// Feature 3c: companies reach the owner for collab/promo/ads.
+// Messages save to Supabase `collab_requests` -> visible in admin dashboard.
+function CollabModal({ user, onClose }) {
+  const [company, setCompany] = useState("");
+  const [email, setEmail] = useState(user?.email || "");
+  const [type, setType] = useState("collaboration");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const TYPES = [
+    { id: "collaboration", label: "🤝 Collaboration" },
+    { id: "promotion", label: "📣 Promotion" },
+    { id: "advertisement", label: "📢 Advertisement" },
+  ];
+
+  const handleSend = async () => {
+    setError("");
+    if (!company.trim() || !email.trim() || !message.trim()) {
+      setError("Please fill in all fields.");
+      return;
+    }
+    setSaving(true);
+    const { error: insErr } = await supabase.from("collab_requests").insert({
+      company_name: company.trim(),
+      contact_email: email.trim(),
+      request_type: type,
+      message: message.trim(),
+      sender_id: user?.id || null,
+      status: "new"
+    });
+    setSaving(false);
+    if (insErr) { setError(insErr.message); return; }
+    setDone(true);
+    setTimeout(() => { setDone(false); onClose(); }, 2200);
+  };
+
+  const labelStyle = { fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
+  const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 16, boxSizing: "border-box" };
+
+  if (done) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <div style={{ fontSize: 56, marginBottom: 14 }}>📨</div>
+          <h3 style={{ color: GOLD, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Message Sent!</h3>
+          <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.6 }}>The STYLEX team will get back to you soon.</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Partner With STYLEX 🤝</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Collaborations, promotions & ads</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
+
+      <label style={labelStyle}>What are you interested in?</label>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {TYPES.map(t => (
+          <button key={t.id} onClick={() => setType(t.id)} style={{ flex: 1, padding: "10px 6px", borderRadius: 10, cursor: "pointer", fontSize: 11, fontWeight: 600, background: type === t.id ? `${GOLD}15` : DARK3, color: type === t.id ? GOLD : MUTED, border: `1.5px solid ${type === t.id ? GOLD : BORDER}` }}>{t.label}</button>
+        ))}
+      </div>
+
+      <label style={labelStyle}>Company / Brand name</label>
+      <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Your company name" style={inputStyle} />
+
+      <label style={labelStyle}>Contact email</label>
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" style={inputStyle} />
+
+      <label style={labelStyle}>Message</label>
+      <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Tell us about your proposal..." rows={4} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+      <GoldBtn onClick={handleSend} disabled={saving} style={{ width: "100%", padding: "13px" }}>
+        {saving ? "Sending..." : "Send Message 📨"}
+      </GoldBtn>
+    </Modal>
+  );
+}
+
+// ─── MARKETPLACE SCREEN ───
+// Feature 3: browse products, upload products, and reach out for partnerships.
+function MarketplaceScreen({ user, onLogin }) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showUpload, setShowUpload] = useState(false);
+  const [showCollab, setShowCollab] = useState(false);
+  const [selectedCat, setSelectedCat] = useState("All");
+
+  const loadProducts = () => {
+    setLoading(true);
+    supabase.from("products").select("*").eq("status", "active").order("created_at", { ascending: false })
+      .then(({ data }) => { setProducts(data || []); setLoading(false); });
+  };
+
+  useEffect(() => { loadProducts(); }, []);
+
+  const cats = ["All", ...new Set(products.map(p => p.category).filter(Boolean))];
+  const filtered = selectedCat === "All" ? products : products.filter(p => p.category === selectedCat);
+
+  return (
+    <div style={{ minHeight: "100vh", background: DARK, padding: "20px 20px 100px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 22, margin: 0 }}>Marketplace 🛍️</h2>
+        <button onClick={() => setShowCollab(true)} title="Partner with us" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 10, color: GOLD, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🤝 Partner</button>
+      </div>
+
+      {/* Upload + Partner banner */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+        <button onClick={() => user ? setShowUpload(true) : onLogin()} style={{ flex: 1, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 12, color: "#000", padding: "14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+          ➕ Sell a Product
+        </button>
+      </div>
+
+      {/* Category filter */}
+      {cats.length > 1 && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 18, overflowX: "auto", scrollbarWidth: "none" }}>
+          {cats.map(cat => (
+            <button key={cat} onClick={() => setSelectedCat(cat)} style={{ background: selectedCat === cat ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : `${GOLD}11`, color: selectedCat === cat ? "#0A0A0B" : MUTED, border: selectedCat === cat ? "none" : `1px solid ${BORDER}`, borderRadius: 20, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{cat}</button>
+          ))}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 40, color: MUTED }}>Loading products...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🛍️</div>
+          <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 18, marginBottom: 8 }}>No products yet</h3>
+          <p style={{ color: MUTED, fontSize: 13 }}>Be the first to list a product!</p>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
+          {filtered.map(p => (
+            <div key={p.id} style={{ background: CARD, borderRadius: 16, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+              <div style={{ height: 120, background: `linear-gradient(135deg, ${GOLD}22, ${DARK3})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 48 }}>{p.emoji || "🛍️"}</div>
+              <div style={{ padding: "12px 14px" }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 4 }}>{p.name}</div>
+                <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>by {p.seller_name}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 800, fontSize: 15, color: GOLD }}>₦{p.price?.toLocaleString()}</span>
+                  <button style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Buy</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showUpload && user && <ProductUploadModal user={user} onClose={() => setShowUpload(false)} onUploaded={loadProducts} />}
+      {showCollab && <CollabModal user={user} onClose={() => setShowCollab(false)} />}
+    </div>
   );
 }
 
@@ -633,12 +1424,14 @@ function HomeScreen({ user, onProfile }) {
 }
 
 // ─── EXPLORE SCREEN ───
-function ExploreScreen({ onProfile, user }) {
+function ExploreScreen({ onProfile, user, realPros = [] }) {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("All");
   const [bookModal, setBookModal] = useState(null);
 
-  const filtered = professionals.filter(p => {
+  // Real pros (from Supabase) shown first, then demo pros
+  const allPros = [...realPros, ...professionals];
+  const filtered = allPros.filter(p => {
     const matchCat = selectedCat === "All" || p.category.toLowerCase().includes(selectedCat.toLowerCase());
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()) || p.location.toLowerCase().includes(search.toLowerCase());
     return matchCat && matchSearch;
@@ -652,7 +1445,7 @@ function ExploreScreen({ onProfile, user }) {
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, category or city..." style={{ width: "100%", background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 16px 12px 40px", color: TEXT, fontSize: 14, boxSizing: "border-box", outline: "none" }} />
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", scrollbarWidth: "none" }}>
-        {["All", ...new Set(professionals.map(p => p.category))].map(cat => (
+        {["All", ...new Set(allPros.map(p => p.category))].map(cat => (
           <button key={cat} onClick={() => setSelectedCat(cat)} style={{ background: selectedCat === cat ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : `${GOLD}11`, color: selectedCat === cat ? "#0A0A0B" : MUTED, border: selectedCat === cat ? "none" : `1px solid ${BORDER}`, borderRadius: 20, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{cat}</button>
         ))}
       </div>
@@ -672,8 +1465,8 @@ function ExploreScreen({ onProfile, user }) {
                   <Badge text={pro.category} color={pro.color} />
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>{pro.price}</div>
-                  <div style={{ fontSize: 10, color: MUTED }}>per session</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>₦{(pro.shopPrice || pro.mobilePrice || 0).toLocaleString()}</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>from</div>
                 </div>
               </div>
               <p style={{ fontSize: 12, color: `${TEXT}99`, margin: "0 0 10px", lineHeight: 1.6 }}>{pro.bio}</p>
@@ -760,76 +1553,12 @@ function BookingsScreen({ user, onLogin }) {
   );
 }
 
-// ─── AI SCANNER ───
-function AIScannerModal({ onClose }) {
-  const [step, setStep] = useState("choose");
-  const [scanType, setScanType] = useState(null);
-
-  const scanTypes = [
-    { id: "face", icon: "😊", label: "Face Shape", desc: "Find makeup & skincare styles" },
-    { id: "hair", icon: "💇", label: "Hair Type", desc: "Discover perfect hairstyles" },
-    { id: "nails", icon: "💅", label: "Nail Shape", desc: "Get nail art recommendations" },
-    { id: "skin", icon: "✨", label: "Skin Tone", desc: "Find your perfect look" },
-  ];
-
-  const results = {
-    face: { type: "Oval Face Shape", desc: "Most versatile shape! Almost any hairstyle suits you.", styles: ["Beach Waves", "Bob Cut", "Pixie Cut", "Long Layers"] },
-    hair: { type: "Type 4C Natural Hair", desc: "Tightly coiled hair that thrives with moisture.", styles: ["Box Braids", "Loc Extensions", "TWA", "Bantu Knots"] },
-    nails: { type: "Short Oval Nails", desc: "Perfect for gel extensions and minimalist nail art.", styles: ["French Tips", "Ombre Gel", "Chrome Finish", "3D Florals"] },
-    skin: { type: "Deep Brown Skin Tone", desc: "Gold, bronze and deep berry shades complement you best.", styles: ["Bronze Glam", "Nude Glam", "Bold Lip", "Dewy Skin"] },
-  };
-
-  return (
-    <Modal onClose={onClose}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div>
-          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>AI Style Scanner ✨</h3>
-          <p style={{ color: MUTED, fontSize: 12, margin: 0 }}>Get personalized style recommendations</p>
-        </div>
-        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
-      </div>
-
-      {step === "choose" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {scanTypes.map(s => (
-            <button key={s.id} onClick={() => { setScanType(s.id); setStep("results"); }} style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "18px 14px", cursor: "pointer", textAlign: "center" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>{s.icon}</div>
-              <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 4 }}>{s.label}</div>
-              <div style={{ fontSize: 11, color: MUTED }}>{s.desc}</div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {step === "results" && scanType && (
-        <div>
-          <div style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 16, marginBottom: 16, textAlign: "center" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>{scanTypes.find(s => s.id === scanType)?.icon}</div>
-            <div style={{ fontWeight: 800, fontSize: 16, color: GOLD, marginBottom: 6 }}>{results[scanType].type}</div>
-            <div style={{ fontSize: 13, color: `${TEXT}99`, lineHeight: 1.6 }}>{results[scanType].desc}</div>
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>RECOMMENDED STYLES</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {results[scanType].styles.map(style => (
-                <span key={style} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 20, padding: "6px 14px", fontSize: 12, color: GOLD, fontWeight: 600 }}>{style}</span>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <GoldBtn onClick={() => setStep("choose")} outline style={{ flex: 1 }}>Scan Again</GoldBtn>
-            <GoldBtn onClick={onClose} style={{ flex: 1 }}>Done ✨</GoldBtn>
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
 // ─── PROFILE SCREEN ───
-function ProfileScreen({ user, onAuth, onLogout }) {
+function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketplace, onOpenSubscription }) {
   const [showScanner, setShowScanner] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [showProductUpload, setShowProductUpload] = useState(false);
+  const [showCollab, setShowCollab] = useState(false);
 
   if (!user) return <AuthScreen onAuthenticated={onAuth} />;
 
@@ -859,9 +1588,17 @@ function ProfileScreen({ user, onAuth, onLogout }) {
         </div>
 
         {isPro ? (
-          <div style={{ display: "flex", gap: 10 }}>
-            <GoldBtn onClick={() => setShowUpload(true)} style={{ flex: 1, padding: "10px 0", fontSize: 12 }}>📹 Upload Content</GoldBtn>
-            <GoldBtn outline style={{ flex: 1, padding: "10px 0", fontSize: 12 }}>✏️ Edit Services</GoldBtn>
+          <div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <GoldBtn onClick={() => setShowUpload(true)} style={{ flex: 1, padding: "10px 0", fontSize: 12 }}>📹 Upload Content</GoldBtn>
+              <GoldBtn outline style={{ flex: 1, padding: "10px 0", fontSize: 12 }}>✏️ Edit Services</GoldBtn>
+            </div>
+            <button onClick={onOpenDashboard} style={{ width: "100%", padding: "14px 16px", borderRadius: 12, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", color: "#0A0A0B", fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              ⚙️ Manage My Business
+            </button>
+            <button onClick={onOpenSubscription} style={{ width: "100%", padding: "14px 16px", borderRadius: 12, background: DARK3, border: `1px solid ${GOLD}44`, color: GOLD, fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              ✅ Get Verified & Boost 🚀
+            </button>
           </div>
         ) : (
           <div style={{ background: `linear-gradient(135deg, #1a0a2e, #2d1654)`, borderRadius: 14, padding: "16px 18px", border: `1px solid #7C5CB544`, cursor: "pointer" }} onClick={() => setShowScanner(true)}>
@@ -887,9 +1624,16 @@ function ProfileScreen({ user, onAuth, onLogout }) {
         </div>
       )}
 
+      {/* Marketplace quick actions for everyone */}
+      <div style={{ margin: "16px 20px 0", display: "flex", gap: 10 }}>
+        <button onClick={() => setShowProductUpload(true)} style={{ flex: 1, background: CARD, borderRadius: 14, padding: "14px", border: `1px solid ${BORDER}`, cursor: "pointer", color: TEXT, fontWeight: 600, fontSize: 13 }}>🛍️ Sell a Product</button>
+        <button onClick={() => setShowCollab(true)} style={{ flex: 1, background: CARD, borderRadius: 14, padding: "14px", border: `1px solid ${BORDER}`, cursor: "pointer", color: TEXT, fontWeight: 600, fontSize: 13 }}>🤝 Partner With Us</button>
+      </div>
+
       <div style={{ padding: "16px 20px" }}>
         {[
           { icon: "📅", label: "My Bookings", sub: "View & manage appointments" },
+          { icon: "🛍️", label: "Marketplace", sub: "Browse & sell products", action: "marketplace" },
           { icon: "❤️", label: isPro ? "My Services" : "Saved Professionals", sub: isPro ? "Manage your service offerings" : "Your beauty favorites" },
           { icon: "💬", label: "Messages", sub: "Chat with " + (isPro ? "clients" : "professionals") },
           { icon: "💳", label: "Payment Methods", sub: isPro ? "Bank accounts & payouts" : "Cards & wallet" },
@@ -897,7 +1641,10 @@ function ProfileScreen({ user, onAuth, onLogout }) {
           { icon: "🔒", label: "Security", sub: "Password & 2FA" },
           { icon: "🚪", label: "Sign Out", sub: "Log out of STYLEX", danger: true },
         ].map((item, i) => (
-          <div key={i} onClick={async () => { if (item.label === "Sign Out") { await supabase.auth.signOut(); onLogout(); } }} style={{ background: CARD, borderRadius: 14, padding: "16px 18px", marginBottom: 10, border: `1px solid ${item.danger ? "#ff444433" : BORDER}`, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
+          <div key={i} onClick={async () => {
+            if (item.label === "Sign Out") { await supabase.auth.signOut(); onLogout(); }
+            else if (item.action === "marketplace") { onOpenMarketplace(); }
+          }} style={{ background: CARD, borderRadius: 14, padding: "16px 18px", marginBottom: 10, border: `1px solid ${item.danger ? "#ff444433" : BORDER}`, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
             <span style={{ fontSize: 20 }}>{item.icon}</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 14, color: item.danger ? "#ff6666" : TEXT }}>{item.label}</div>
@@ -909,6 +1656,8 @@ function ProfileScreen({ user, onAuth, onLogout }) {
       </div>
 
       {showScanner && <AIScannerModal onClose={() => setShowScanner(false)} />}
+      {showProductUpload && <ProductUploadModal user={user} onClose={() => setShowProductUpload(false)} />}
+      {showCollab && <CollabModal user={user} onClose={() => setShowCollab(false)} />}
       {showUpload && (
         <Modal onClose={() => setShowUpload(false)}>
           <div style={{ textAlign: "center", padding: "20px 0" }}>
@@ -1008,7 +1757,7 @@ function ProProfileScreen({ pro, onBack, user }) {
   );
 }
 
-// ─── MAIN APP ───
+// ─── STYLEX ASSISTANT (CHATBOT) ───
 function StylexAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
@@ -1045,7 +1794,7 @@ function StylexAssistant() {
   };
 
   return (
-    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1000 }}>
+    <div style={{ position: 'fixed', bottom: 90, right: 20, zIndex: 1000 }}>
       {isOpen && (
         <div style={{ width: 320, height: 420, background: '#0a0a0a', border: '2px solid #d4af37', borderRadius: 12, display: 'flex', flexDirection: 'column', marginBottom: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
           <div style={{ background: '#d4af37', color: '#000', padding: 12, borderRadius: '10px 10px 0 0', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
@@ -1085,12 +1834,53 @@ function StylexAssistant() {
     </div>
   );
 }
+
+// ─── MAIN APP ───
 export default function StylexApp() {
   const [activeTab, setActiveTab] = useState("home");
   const [user, setUser] = useState(null);
   const [viewingPro, setViewingPro] = useState(null);
+  const [realPros, setRealPros] = useState([]);
+  const [showProDashboard, setShowProDashboard] = useState(false);
+  const [showSubscription, setShowSubscription] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // EFFECT 1 — fetch real professionals from Supabase (FIXED: now its own top-level effect)
+  useEffect(() => {
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_type", "professional")
+      .then(({ data }) => {
+        if (data) {
+          const mapped = data
+            .filter(p => p.category) // only pros who've set up their profile
+            .map(p => ({
+              id: "db-" + p.id,
+              name: p.full_name || "Professional",
+              handle: "@" + (p.full_name || "pro").toLowerCase().replace(/\s+/g, ""),
+              category: p.category || "Beauty Pro",
+              location: p.location || "Nigeria",
+              avatar: (p.full_name || "PR").slice(0, 2).toUpperCase(),
+              rating: 5.0,
+              reviews: 0,
+              followers: "0",
+              shopPrice: p.shop_price || 0,
+              mobilePrice: p.mobile_price || 0,
+              offersShop: p.offers_shop !== false,
+              offersMobile: p.offers_mobile !== false,
+              bio: p.bio || "",
+              tags: p.services ? p.services.split(",").map(s => s.trim()) : ["Service"],
+              verified: p.is_verified === true,
+              available: p.is_available !== false,
+              color: "#C9A84C"
+            }));
+          setRealPros(mapped);
+        }
+      });
+  }, []);
+
+  // EFFECT 2 — auth/session (FIXED: separated from the fetch above)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -1127,6 +1917,7 @@ export default function StylexApp() {
   const navItems = [
     { id: "home", label: "Home", icon: "🏠" },
     { id: "explore", label: "Explore", icon: "🔍" },
+    { id: "marketplace", label: "Shop", icon: "🛍️" },
     { id: "bookings", label: "Bookings", icon: "📅" },
     { id: "profile", label: "Profile", icon: "👤" },
   ];
@@ -1138,7 +1929,6 @@ export default function StylexApp() {
           <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 4, color: GOLD, fontFamily: "Georgia, serif", marginBottom: 16 }}>STYLEX</div>
           <div style={{ color: MUTED, fontSize: 13 }}>Loading...</div>
         </div>
-       
       </div>
     );
   }
@@ -1152,11 +1942,13 @@ export default function StylexApp() {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight:"100vh", position: "relative", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-      {activeTab === "home" && <HomeScreen user={user} onProfile={pro => setViewingPro(pro)} />}
-      {activeTab === "explore" && <ExploreScreen user={user} onProfile={pro => setViewingPro(pro)} />}
+    <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight: "100vh", position: "relative", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
+      {activeTab === "home" && <HomeScreen user={user} onProfile={(pro) => setViewingPro(pro)} />}
+      {activeTab === "explore" && <ExploreScreen user={user} realPros={realPros} onProfile={(pro) => setViewingPro(pro)} />}
+      {activeTab === "marketplace" && <MarketplaceScreen user={user} onLogin={() => setActiveTab("profile")} />}
       {activeTab === "bookings" && <BookingsScreen user={user} onLogin={() => setActiveTab("profile")} />}
-      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} />}
+      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} onOpenDashboard={() => setShowProDashboard(true)} onOpenMarketplace={() => setActiveTab("marketplace")} onOpenSubscription={() => setShowSubscription(true)} />}
+
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: `${DARK2}f5`, backdropFilter: "blur(20px)", borderTop: `1px solid ${BORDER}`, display: "flex", padding: "8px 0 16px", zIndex: 200 }}>
         {navItems.map(item => {
           const active = activeTab === item.id;
@@ -1169,7 +1961,10 @@ export default function StylexApp() {
           );
         })}
       </div>
+
       <StylexAssistant />
+      {showProDashboard && <ProDashboard user={user} onClose={() => setShowProDashboard(false)} onOpenSubscription={() => { setShowProDashboard(false); setShowSubscription(true); }} />}
+      {showSubscription && <SubscriptionModal user={user} onClose={() => setShowSubscription(false)} onUpdated={() => {}} />}
     </div>
   );
 }
