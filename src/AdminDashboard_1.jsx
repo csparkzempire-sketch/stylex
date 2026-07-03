@@ -27,20 +27,31 @@ function StatusBadge({ status }) {
     verified: { bg: `${GREEN}22`, color: GREEN, border: `${GREEN}44` },
     pending: { bg: `${GOLD}22`, color: GOLD, border: `${GOLD}44` },
     suspended: { bg: `${RED}22`, color: RED, border: `${RED}44` },
+    banned: { bg: `${RED}22`, color: RED, border: `${RED}44` },
     active: { bg: `${GREEN}22`, color: GREEN, border: `${GREEN}44` },
     inactive: { bg: `${MUTED}22`, color: MUTED, border: `${MUTED}44` },
     completed: { bg: `${GREEN}22`, color: GREEN, border: `${GREEN}44` },
     confirmed: { bg: `${GREEN}22`, color: GREEN, border: `${GREEN}44` },
     upcoming: { bg: `${BLUE}22`, color: BLUE, border: `${BLUE}44` },
     cancelled: { bg: `${RED}22`, color: RED, border: `${RED}44` },
-    open: { bg: `${RED}22`, color: RED, border: `${RED}44` },
-    reviewing: { bg: `${GOLD}22`, color: GOLD, border: `${GOLD}44` },
+    new: { bg: `${GOLD}22`, color: GOLD, border: `${GOLD}44` },
     client: { bg: `${BLUE}22`, color: BLUE, border: `${BLUE}44` },
     professional: { bg: `${GOLD}22`, color: GOLD, border: `${GOLD}44` },
+    public: { bg: `${GREEN}22`, color: GREEN, border: `${GREEN}44` },
+    private: { bg: `${MUTED}22`, color: MUTED, border: `${MUTED}44` },
   };
   const s = colors[status] || colors.pending;
   return (
     <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", padding: "3px 9px", borderRadius: 5, background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>{status}</span>
+  );
+}
+
+function Btn({ children, onClick, color = GOLD, outline = false, danger = false, disabled = false, small = false }) {
+  const bg = danger ? `${RED}22` : outline ? "transparent" : `linear-gradient(135deg, ${color}, ${color}cc)`;
+  const borderC = danger ? `${RED}55` : outline ? `${color}55` : "none";
+  const textC = danger ? RED : outline ? color : color === GOLD ? "#0A0A0B" : "#fff";
+  return (
+    <button onClick={onClick} disabled={disabled} style={{ background: disabled ? DARK3 : bg, border: `1px solid ${disabled ? BORDER : borderC}`, borderRadius: small ? 7 : 10, color: disabled ? MUTED : textC, padding: small ? "5px 12px" : "9px 18px", fontSize: small ? 11 : 13, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>{children}</button>
   );
 }
 
@@ -71,7 +82,7 @@ function AdminLogin({ onLogin }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
             <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>ADMIN EMAIL</label>
-            <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="admin@stylex.ng" onKeyDown={e => e.key === "Enter" && handleLogin()} style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+            <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="admin@stylex.app" onKeyDown={e => e.key === "Enter" && handleLogin()} style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
           </div>
           <div style={{ position: "relative" }}>
             <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>PASSWORD</label>
@@ -86,185 +97,309 @@ function AdminLogin({ onLogin }) {
   );
 }
 
-// ─── MAIN PANEL ───
+// ─── ADMIN PANEL ───
 function AdminPanel({ onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [notification, setNotification] = useState(null);
-
-  // Real data from Supabase
-  const [stats, setStats] = useState({ users: 0, professionals: 0, clients: 0, bookings: 0, revenue: 0 });
-  const [users, setUsers] = useState([]);
-  const [bookings, setBookings] = useState([]);
+  const [notif, setNotif] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchAllData();
-  }, []);
+  // Data
+  const [stats, setStats] = useState({ users: 0, professionals: 0, clients: 0, bookings: 0, revenue: 0, posts: 0, products: 0, collabs: 0 });
+  const [users, setUsers] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [collabs, setCollabs] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [follows, setFollows] = useState([]);
 
-  const fetchAllData = async () => {
+  // Filters
+  const [userFilter, setUserFilter] = useState("all");
+  const [userSearch, setUserSearch] = useState("");
+  const [productFilter, setProductFilter] = useState("all");
+  const [postFilter, setPostFilter] = useState("all");
+  const [bookingFilter, setBookingFilter] = useState("all");
+
+  useEffect(() => { fetchAll(); }, []);
+
+  const showNotif = (msg, type = "success") => {
+    setNotif({ msg, type });
+    setTimeout(() => setNotif(null), 3000);
+  };
+
+  const fetchAll = async () => {
     setLoading(true);
     try {
-      // Fetch profiles
-      const { data: profiles } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
-      const allUsers = profiles || [];
-      const professionals = allUsers.filter(u => u.user_type === "professional");
-      const clients = allUsers.filter(u => u.user_type === "client");
+      const [
+        { data: profiles },
+        { data: bookingData },
+        { data: postData },
+        { data: productData },
+        { data: collabData },
+        { data: commentData },
+        { data: followData },
+      ] = await Promise.all([
+        supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+        supabase.from("bookings").select("*").order("created_at", { ascending: false }),
+        supabase.from("posts").select("*").order("created_at", { ascending: false }),
+        supabase.from("products").select("*").order("created_at", { ascending: false }),
+        supabase.from("collab_requests").select("*").order("created_at", { ascending: false }),
+        supabase.from("comments").select("*").order("created_at", { ascending: false }),
+        supabase.from("follows").select("*").order("created_at", { ascending: false }),
+      ]);
 
-      // Fetch bookings
-      const { data: bookingData } = await supabase.from("bookings").select("*").order("created_at", { ascending: false });
+      const allUsers = profiles || [];
       const allBookings = bookingData || [];
-      const totalRevenue = allBookings.reduce((sum, b) => sum + (b.price || 0), 0);
+      const totalRevenue = allBookings.reduce((s, b) => s + (b.price || 0), 0);
 
       setStats({
         users: allUsers.length,
-        professionals: professionals.length,
-        clients: clients.length,
+        professionals: allUsers.filter(u => u.user_type === "professional").length,
+        clients: allUsers.filter(u => u.user_type === "client").length,
         bookings: allBookings.length,
-        revenue: totalRevenue
+        revenue: totalRevenue,
+        posts: (postData || []).length,
+        products: (productData || []).length,
+        collabs: (collabData || []).length,
       });
       setUsers(allUsers);
       setBookings(allBookings);
-    } catch (err) {
-      console.error("Error fetching data:", err);
-    }
+      setPosts(postData || []);
+      setProducts(productData || []);
+      setCollabs(collabData || []);
+      setComments(commentData || []);
+      setFollows(followData || []);
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
-  const showNotif = (msg, type = "success") => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 3000);
+  // ── User Actions ──
+  const verifyUser = async (id, current) => {
+    await supabase.from("profiles").update({ is_verified: !current }).eq("id", id);
+    setUsers(us => us.map(u => u.id === id ? { ...u, is_verified: !current } : u));
+    showNotif(current ? "Verification removed" : "User verified ✅");
+  };
+
+  const boostUser = async (id, current) => {
+    await supabase.from("profiles").update({ is_boosted: !current }).eq("id", id);
+    setUsers(us => us.map(u => u.id === id ? { ...u, is_boosted: !current } : u));
+    showNotif(current ? "Boost removed" : "User boosted 🚀");
+  };
+
+  const suspendUser = async (id, current) => {
+    const newStatus = current === "suspended" ? "active" : "suspended";
+    await supabase.from("profiles").update({ account_status: newStatus }).eq("id", id);
+    setUsers(us => us.map(u => u.id === id ? { ...u, account_status: newStatus } : u));
+    showNotif(newStatus === "suspended" ? "User suspended 🚫" : "User reactivated ✅");
   };
 
   const deleteUser = async (id) => {
+    if (!window.confirm("Permanently delete this user and all their data?")) return;
     await supabase.from("profiles").delete().eq("id", id);
-    fetchAllData();
-    showNotif("User removed successfully");
+    setUsers(us => us.filter(u => u.id !== id));
+    showNotif("User deleted");
+  };
+
+  const changeUserType = async (id, newType) => {
+    await supabase.from("profiles").update({ user_type: newType }).eq("id", id);
+    setUsers(us => us.map(u => u.id === id ? { ...u, user_type: newType } : u));
+    showNotif(`Account changed to ${newType}`);
+  };
+
+  // ── Post Actions ──
+  const deletePost = async (id) => {
+    await supabase.from("posts").delete().eq("id", id);
+    setPosts(ps => ps.filter(p => p.id !== id));
+    showNotif("Post deleted");
+  };
+
+  // ── Product Actions ──
+  const toggleProductStatus = async (id, current) => {
+    const newStatus = current === "active" ? "removed" : "active";
+    await supabase.from("products").update({ status: newStatus }).eq("id", id);
+    setProducts(ps => ps.map(p => p.id === id ? { ...p, status: newStatus } : p));
+    showNotif(newStatus === "active" ? "Product restored ✅" : "Product removed 🚫");
+  };
+
+  const deleteProduct = async (id) => {
+    await supabase.from("products").delete().eq("id", id);
+    setProducts(ps => ps.filter(p => p.id !== id));
+    showNotif("Product deleted");
+  };
+
+  // ── Collab Actions ──
+  const updateCollab = async (id, status) => {
+    await supabase.from("collab_requests").update({ status }).eq("id", id);
+    setCollabs(cs => cs.map(c => c.id === id ? { ...c, status } : c));
+    showNotif(`Request marked as ${status}`);
+  };
+
+  // ── Booking Actions ──
+  const updateBooking = async (id, status) => {
+    await supabase.from("bookings").update({ status }).eq("id", id);
+    setBookings(bs => bs.map(b => b.id === id ? { ...b, status } : b));
+    showNotif(`Booking marked as ${status}`);
+  };
+
+  // ── Comment Actions ──
+  const deleteComment = async (id) => {
+    await supabase.from("comments").delete().eq("id", id);
+    setComments(cs => cs.filter(c => c.id !== id));
+    showNotif("Comment deleted");
   };
 
   const navItems = [
     { id: "overview", icon: "📊", label: "Overview" },
     { id: "users", icon: "👥", label: "Users" },
+    { id: "professionals", icon: "✂️", label: "Professionals" },
+    { id: "posts", icon: "🎬", label: "Posts & Feed" },
+    { id: "comments", icon: "💬", label: "Comments" },
     { id: "bookings", icon: "📅", label: "Bookings" },
+    { id: "marketplace", icon: "🛍️", label: "Marketplace" },
+    { id: "collabs", icon: "🤝", label: "Partnerships" },
     { id: "revenue", icon: "💰", label: "Revenue" },
     { id: "settings", icon: "⚙️", label: "Settings" },
   ];
 
-  const statCards = [
-    { label: "Total Users", value: stats.users, icon: "👥", color: BLUE, sub: "Registered accounts" },
-    { label: "Professionals", value: stats.professionals, icon: "✂️", color: GOLD, sub: "Beauty professionals" },
-    { label: "Clients", value: stats.clients, icon: "👤", color: GREEN, sub: "Registered clients" },
-    { label: "Total Bookings", value: stats.bookings, icon: "📅", color: "#B56C8A", sub: "All time bookings" },
-    { label: "Total Revenue", value: `₦${stats.revenue.toLocaleString()}`, icon: "💰", color: GREEN, sub: "Platform earnings" },
-    { label: "Active Now", value: stats.users, icon: "🟢", color: BLUE, sub: "Total registered" },
-  ];
+  const filteredUsers = users.filter(u => {
+    const matchType = userFilter === "all" || u.user_type === userFilter;
+    const matchSearch = !userSearch || (u.full_name || "").toLowerCase().includes(userSearch.toLowerCase()) || (u.email || "").toLowerCase().includes(userSearch.toLowerCase());
+    return matchType && matchSearch;
+  });
+
+  const thStyle = { padding: "12px 16px", textAlign: "left", fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" };
+  const tdStyle = { padding: "13px 16px", fontSize: 13, borderBottom: `1px solid ${BORDER}22`, verticalAlign: "middle" };
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: DARK, fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
 
-      {notification && (
-        <div style={{ position: "fixed", top: 20, right: 20, zIndex: 1000, background: notification.type === "success" ? `${GREEN}22` : `${RED}22`, border: `1px solid ${notification.type === "success" ? GREEN : RED}`, borderRadius: 12, padding: "12px 20px", fontSize: 13, fontWeight: 600, color: notification.type === "success" ? GREEN : RED, backdropFilter: "blur(10px)" }}>
-          {notification.type === "success" ? "✅" : "❌"} {notification.msg}
+      {/* Notification */}
+      {notif && (
+        <div style={{ position: "fixed", top: 20, right: 20, zIndex: 9999, background: notif.type === "success" ? `${GREEN}22` : `${RED}22`, border: `1px solid ${notif.type === "success" ? GREEN : RED}`, borderRadius: 12, padding: "12px 20px", fontSize: 13, fontWeight: 600, color: notif.type === "success" ? GREEN : RED, backdropFilter: "blur(10px)", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
+          {notif.type === "success" ? "✅" : "❌"} {notif.msg}
         </div>
       )}
 
-      {/* Sidebar */}
-      <div style={{ width: sidebarOpen ? 240 : 70, background: DARK2, borderRight: `1px solid ${BORDER}`, padding: "24px 0", display: "flex", flexDirection: "column", transition: "width 0.3s", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
-        <div style={{ padding: "0 20px 24px", borderBottom: `1px solid ${BORDER}`, marginBottom: 16 }}>
+      {/* ── Sidebar ── */}
+      <div style={{ width: sidebarOpen ? 220 : 60, background: DARK2, borderRight: `1px solid ${BORDER}`, padding: "20px 0", display: "flex", flexDirection: "column", transition: "width 0.25s", flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto", overflowX: "hidden" }}>
+        <div style={{ padding: "0 16px 20px", borderBottom: `1px solid ${BORDER}`, marginBottom: 12 }}>
           {sidebarOpen ? (
             <div>
-              <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: 3, color: GOLD, fontFamily: "Georgia, serif" }}>STYLEX</div>
+              <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: 3, color: GOLD, fontFamily: "Georgia, serif" }}>STYLEX</div>
               <div style={{ fontSize: 9, color: MUTED, letterSpacing: 2 }}>ADMIN PANEL</div>
             </div>
           ) : (
-            <div style={{ fontSize: 18, fontWeight: 900, color: GOLD, fontFamily: "Georgia, serif" }}>SX</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: GOLD, fontFamily: "Georgia, serif" }}>SX</div>
           )}
         </div>
-        <button onClick={() => setSidebarOpen(s => !s)} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 16, padding: "8px 20px", textAlign: "left", marginBottom: 8 }}>{sidebarOpen ? "◀" : "▶"}</button>
+        <button onClick={() => setSidebarOpen(s => !s)} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 14, padding: "6px 16px", textAlign: "left", marginBottom: 6 }}>{sidebarOpen ? "◀ Collapse" : "▶"}</button>
         {navItems.map(item => (
-          <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ background: activeTab === item.id ? `${GOLD}15` : "none", border: "none", cursor: "pointer", borderLeft: activeTab === item.id ? `3px solid ${GOLD}` : "3px solid transparent", padding: "12px 20px", display: "flex", alignItems: "center", gap: 12, color: activeTab === item.id ? GOLD : MUTED, fontSize: 13, fontWeight: activeTab === item.id ? 700 : 400, transition: "all 0.2s", textAlign: "left" }}>
-            <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
+          <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ background: activeTab === item.id ? `${GOLD}15` : "none", border: "none", cursor: "pointer", borderLeft: activeTab === item.id ? `3px solid ${GOLD}` : "3px solid transparent", padding: "11px 16px", display: "flex", alignItems: "center", gap: 10, color: activeTab === item.id ? GOLD : MUTED, fontSize: 12, fontWeight: activeTab === item.id ? 700 : 400, transition: "all 0.15s", textAlign: "left", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 15, flexShrink: 0 }}>{item.icon}</span>
             {sidebarOpen && item.label}
           </button>
         ))}
-        <div style={{ marginTop: "auto", padding: "16px 20px", borderTop: `1px solid ${BORDER}` }}>
-          <button onClick={onLogout} style={{ background: `${RED}11`, border: `1px solid ${RED}33`, borderRadius: 10, color: RED, cursor: "pointer", padding: "10px 16px", fontSize: 12, fontWeight: 600, width: "100%", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ marginTop: "auto", padding: "14px 16px", borderTop: `1px solid ${BORDER}` }}>
+          <button onClick={onLogout} style={{ background: `${RED}11`, border: `1px solid ${RED}33`, borderRadius: 8, color: RED, cursor: "pointer", padding: "9px 14px", fontSize: 11, fontWeight: 600, width: "100%", display: "flex", alignItems: "center", gap: 8 }}>
             <span>🚪</span>{sidebarOpen && "Sign Out"}
           </button>
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* ── Main Content ── */}
       <div style={{ flex: 1, overflow: "auto" }}>
-        <div style={{ background: `${DARK2}ee`, backdropFilter: "blur(12px)", borderBottom: `1px solid ${BORDER}`, padding: "16px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
+        {/* Header */}
+        <div style={{ background: `${DARK2}ee`, backdropFilter: "blur(12px)", borderBottom: `1px solid ${BORDER}`, padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
           <div>
-            <h1 style={{ color: TEXT, fontWeight: 800, fontSize: 20, margin: 0 }}>{navItems.find(n => n.id === activeTab)?.icon} {navItems.find(n => n.id === activeTab)?.label}</h1>
-            <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>STYLEX Admin · Real Data from Supabase</div>
+            <h1 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: 0 }}>{navItems.find(n => n.id === activeTab)?.icon} {navItems.find(n => n.id === activeTab)?.label}</h1>
+            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>STYLEX Global Admin · Live Supabase Data</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={fetchAllData} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🔄 Refresh</button>
-            <div style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 8, padding: "6px 12px", fontSize: 12, color: GOLD, fontWeight: 700 }}>👑 FOUNDER</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={fetchAll} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🔄 Refresh</button>
+            <div style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 8, padding: "6px 12px", fontSize: 11, color: GOLD, fontWeight: 700 }}>👑 FOUNDER</div>
           </div>
         </div>
 
-        <div style={{ padding: 28 }}>
-
+        <div style={{ padding: 24 }}>
           {loading && (
-            <div style={{ textAlign: "center", padding: 60, color: MUTED }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-              <div>Loading real data from Supabase...</div>
+            <div style={{ textAlign: "center", padding: 80, color: MUTED }}>
+              <div style={{ fontSize: 36, marginBottom: 14 }}>⏳</div>
+              <div style={{ fontSize: 14 }}>Loading live data from Supabase...</div>
             </div>
           )}
 
-          {/* ── OVERVIEW ── */}
+          {/* ════════════════ OVERVIEW ════════════════ */}
           {!loading && activeTab === "overview" && (
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
-                {statCards.map((stat, i) => (
-                  <div key={i} style={{ background: CARD, borderRadius: 16, padding: 20, border: `1px solid ${BORDER}`, position: "relative", overflow: "hidden" }}>
-                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${stat.color}, ${stat.color}44)` }} />
+              {/* Stat cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 26 }}>
+                {[
+                  { label: "Total Users", value: stats.users, icon: "👥", color: BLUE },
+                  { label: "Professionals", value: stats.professionals, icon: "✂️", color: GOLD },
+                  { label: "Clients", value: stats.clients, icon: "👤", color: GREEN },
+                  { label: "Total Bookings", value: stats.bookings, icon: "📅", color: "#B56C8A" },
+                  { label: "Total Revenue", value: `₦${stats.revenue.toLocaleString()}`, icon: "💰", color: GREEN },
+                  { label: "Posts", value: stats.posts, icon: "🎬", color: BLUE },
+                  { label: "Products Listed", value: stats.products, icon: "🛍️", color: GOLD },
+                  { label: "Collab Requests", value: stats.collabs, icon: "🤝", color: "#B56C8A" },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: CARD, borderRadius: 14, padding: 18, border: `1px solid ${BORDER}`, position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${s.color}, ${s.color}44)` }} />
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
-                        <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, letterSpacing: 1, marginBottom: 8 }}>{stat.label.toUpperCase()}</div>
-                        <div style={{ fontSize: 26, fontWeight: 800, color: TEXT }}>{stat.value}</div>
-                        <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{stat.sub}</div>
+                        <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>{s.label.toUpperCase()}</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: TEXT }}>{s.value}</div>
                       </div>
-                      <div style={{ fontSize: 28, opacity: 0.8 }}>{stat.icon}</div>
+                      <span style={{ fontSize: 24 }}>{s.icon}</span>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Recent Users */}
-              <div style={{ background: CARD, borderRadius: 16, border: `1px solid ${BORDER}`, overflow: "hidden", marginBottom: 20 }}>
-                <div style={{ padding: "18px 22px", borderBottom: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 15, margin: 0 }}>Recent Sign Ups</h3>
-                  <button onClick={() => setActiveTab("users")} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>View All</button>
+              {/* Recent sign ups */}
+              <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden", marginBottom: 18 }}>
+                <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 14, margin: 0 }}>Recent Sign Ups</h3>
+                  <button onClick={() => setActiveTab("users")} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 7, color: MUTED, padding: "4px 12px", cursor: "pointer", fontSize: 11 }}>View All</button>
                 </div>
-                {users.length === 0 ? (
-                  <div style={{ padding: 40, textAlign: "center", color: MUTED }}>
-                    <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
-                    <div>No users have signed up yet.</div>
-                    <div style={{ fontSize: 12, marginTop: 8 }}>Share your app link to get your first users!</div>
-                  </div>
-                ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["Name", "Email", "Type", "Country", "Joined"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {users.slice(0, 6).map((u, i) => (
+                        <tr key={i}>
+                          <td style={{ ...tdStyle, color: TEXT, fontWeight: 600 }}>{u.full_name || "—"}</td>
+                          <td style={{ ...tdStyle, color: MUTED }}>{u.email}</td>
+                          <td style={tdStyle}><StatusBadge status={u.user_type || "client"} /></td>
+                          <td style={{ ...tdStyle, color: MUTED }}>{u.country || u.location || "—"}</td>
+                          <td style={{ ...tdStyle, color: MUTED }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Recent posts */}
+              <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden", marginBottom: 18 }}>
+                <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 14, margin: 0 }}>Recent Posts</h3>
+                  <button onClick={() => setActiveTab("posts")} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 7, color: MUTED, padding: "4px 12px", cursor: "pointer", fontSize: 11 }}>View All</button>
+                </div>
+                {posts.length === 0 ? <div style={{ padding: 30, textAlign: "center", color: MUTED, fontSize: 13 }}>No posts yet</div> : (
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                          {["Name", "Email", "Type", "Location", "Joined"].map(h => (
-                            <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1 }}>{h.toUpperCase()}</th>
-                          ))}
-                        </tr>
-                      </thead>
+                      <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["By", "Caption", "Type", "Likes", "Comments", "Posted"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
                       <tbody>
-                        {users.slice(0, 5).map((user, i) => (
-                          <tr key={i} style={{ borderBottom: `1px solid ${BORDER}22` }}>
-                            <td style={{ padding: "14px 16px", fontSize: 13, color: TEXT, fontWeight: 600 }}>{user.full_name || "—"}</td>
-                            <td style={{ padding: "14px 16px", fontSize: 12, color: MUTED }}>{user.email}</td>
-                            <td style={{ padding: "14px 16px" }}><StatusBadge status={user.user_type || "client"} /></td>
-                            <td style={{ padding: "14px 16px", fontSize: 12, color: MUTED }}>{user.location || "—"}</td>
-                            <td style={{ padding: "14px 16px", fontSize: 12, color: MUTED }}>{user.created_at ? new Date(user.created_at).toLocaleDateString() : "—"}</td>
+                        {posts.slice(0, 5).map((p, i) => (
+                          <tr key={i}>
+                            <td style={{ ...tdStyle, color: TEXT, fontWeight: 600 }}>{p.pro_name || "—"}</td>
+                            <td style={{ ...tdStyle, color: MUTED, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.caption || "—"}</td>
+                            <td style={tdStyle}><StatusBadge status={p.media_type || "photo"} /></td>
+                            <td style={{ ...tdStyle, color: GOLD }}>{p.likes || 0}</td>
+                            <td style={{ ...tdStyle, color: MUTED }}>{p.comments || 0}</td>
+                            <td style={{ ...tdStyle, color: MUTED }}>{p.created_at ? new Date(p.created_at).toLocaleDateString() : "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -273,89 +408,162 @@ function AdminPanel({ onLogout }) {
                 )}
               </div>
 
-              {/* Recent Bookings */}
-              <div style={{ background: CARD, borderRadius: 16, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
-                <div style={{ padding: "18px 22px", borderBottom: `1px solid ${BORDER}` }}>
-                  <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 15, margin: 0 }}>Recent Bookings</h3>
+              {/* Collab requests summary */}
+              {collabs.filter(c => c.status === "new").length > 0 && (
+                <div style={{ background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: GOLD }}>🤝 {collabs.filter(c => c.status === "new").length} New Partnership Request{collabs.filter(c => c.status === "new").length > 1 ? "s" : ""}</div>
+                    <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>Brands and companies want to work with STYLEX</div>
+                  </div>
+                  <button onClick={() => setActiveTab("collabs")} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 8, color: "#0A0A0B", padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Review →</button>
                 </div>
-                {bookings.length === 0 ? (
-                  <div style={{ padding: 40, textAlign: "center", color: MUTED }}>
-                    <div style={{ fontSize: 32, marginBottom: 12 }}>📅</div>
-                    <div>No bookings yet.</div>
-                    <div style={{ fontSize: 12, marginTop: 8 }}>Bookings will appear here once users start booking.</div>
-                  </div>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                          {["Reference", "Service", "Date", "Time", "Amount", "Status"].map(h => (
-                            <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1 }}>{h.toUpperCase()}</th>
-                          ))}
+              )}
+            </div>
+          )}
+
+          {/* ════════════════ ALL USERS ════════════════ */}
+          {!loading && activeTab === "users" && (
+            <div>
+              <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
+                <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search name or email..." style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 9, padding: "9px 14px", color: TEXT, fontSize: 13, outline: "none", minWidth: 220 }} />
+                {["all", "client", "professional"].map(f => (
+                  <button key={f} onClick={() => setUserFilter(f)} style={{ background: userFilter === f ? `${GOLD}15` : DARK3, border: `1px solid ${userFilter === f ? GOLD : BORDER}`, borderRadius: 8, color: userFilter === f ? GOLD : MUTED, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{f === "all" ? `All (${users.length})` : f === "client" ? `Clients (${stats.clients})` : `Pros (${stats.professionals})`}</button>
+                ))}
+              </div>
+              <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["User", "Email", "Type", "Country", "Status", "Verified", "Joined", "Actions"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {filteredUsers.map((u, i) => (
+                        <tr key={i} style={{ opacity: u.account_status === "suspended" ? 0.6 : 1 }}>
+                          <td style={tdStyle}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ width: 34, height: 34, borderRadius: "50%", background: `${GOLD}22`, border: `1px solid ${GOLD}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: GOLD, flexShrink: 0, overflow: "hidden" }}>
+                                {u.avatar_url ? <img src={u.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (u.full_name || "U").slice(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 600, fontSize: 13, color: TEXT }}>{u.full_name || "No name"}</div>
+                                {u.username && <div style={{ fontSize: 11, color: GOLD }}>@{u.username}</div>}
+                                {u.category && <div style={{ fontSize: 11, color: MUTED }}>{u.category}</div>}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 12 }}>{u.email}</td>
+                          <td style={tdStyle}><StatusBadge status={u.user_type || "client"} /></td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 12 }}>{u.country || u.location || "—"}</td>
+                          <td style={tdStyle}><StatusBadge status={u.account_status || "active"} /></td>
+                          <td style={{ ...tdStyle, fontSize: 16 }}>{u.is_verified ? "✅" : "—"}{u.is_boosted ? " 🚀" : ""}</td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 11 }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</td>
+                          <td style={tdStyle}>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <Btn small onClick={() => verifyUser(u.id, u.is_verified)} outline color={GREEN}>{u.is_verified ? "Unverify" : "✅ Verify"}</Btn>
+                              <Btn small onClick={() => boostUser(u.id, u.is_boosted)} outline color={GOLD}>{u.is_boosted ? "Unboost" : "🚀 Boost"}</Btn>
+                              <Btn small onClick={() => suspendUser(u.id, u.account_status)} danger>{u.account_status === "suspended" ? "Reactivate" : "Suspend"}</Btn>
+                              <Btn small onClick={() => changeUserType(u.id, u.user_type === "professional" ? "client" : "professional")} outline color={BLUE}>{u.user_type === "professional" ? "→ Client" : "→ Pro"}</Btn>
+                              <Btn small onClick={() => deleteUser(u.id)} danger>Delete</Btn>
+                            </div>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {bookings.map((b, i) => (
-                          <tr key={i} style={{ borderBottom: `1px solid ${BORDER}22` }}>
-                            <td style={{ padding: "14px 16px", fontSize: 11, color: GOLD, fontFamily: "monospace" }}>{b.reference}</td>
-                            <td style={{ padding: "14px 16px", fontSize: 13, color: TEXT }}>{b.service}</td>
-                            <td style={{ padding: "14px 16px", fontSize: 12, color: MUTED }}>{b.date}</td>
-                            <td style={{ padding: "14px 16px", fontSize: 12, color: MUTED }}>{b.time}</td>
-                            <td style={{ padding: "14px 16px", fontSize: 13, color: GOLD, fontWeight: 700 }}>₦{b.price?.toLocaleString()}</td>
-                            <td style={{ padding: "14px 16px" }}><StatusBadge status={b.status || "pending"} /></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
 
-          {/* ── USERS ── */}
-          {!loading && activeTab === "users" && (
+          {/* ════════════════ PROFESSIONALS ════════════════ */}
+          {!loading && activeTab === "professionals" && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <div style={{ fontSize: 13, color: MUTED }}>{users.length} registered users</div>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: GOLD }}>✂️ {stats.professionals} Professionals</span>
-                  <span style={{ fontSize: 12, color: BLUE }}>👤 {stats.clients} Clients</span>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
+                {[
+                  { label: "Total Pros", value: stats.professionals, color: GOLD },
+                  { label: "Verified", value: users.filter(u => u.user_type === "professional" && u.is_verified).length, color: GREEN },
+                  { label: "Boosted", value: users.filter(u => u.user_type === "professional" && u.is_boosted).length, color: BLUE },
+                  { label: "Suspended", value: users.filter(u => u.user_type === "professional" && u.account_status === "suspended").length, color: RED },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: CARD, borderRadius: 14, padding: 18, border: `1px solid ${BORDER}` }}>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>{s.label.toUpperCase()}</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["Professional", "Category", "Location", "Shop Price", "Verified", "Boosted", "Available", "Actions"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {users.filter(u => u.user_type === "professional").map((u, i) => (
+                        <tr key={i}>
+                          <td style={tdStyle}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ width: 34, height: 34, borderRadius: "50%", background: `${GOLD}22`, border: `1px solid ${GOLD}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: GOLD, overflow: "hidden" }}>
+                                {u.avatar_url ? <img src={u.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (u.full_name || "P").slice(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 600, fontSize: 13, color: TEXT }}>{u.full_name}</div>
+                                <div style={{ fontSize: 11, color: MUTED }}>{u.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ ...tdStyle, color: GOLD, fontSize: 12 }}>{u.category || "—"}</td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 12 }}>{u.country || u.location || "—"}</td>
+                          <td style={{ ...tdStyle, color: GREEN, fontWeight: 700 }}>{u.shop_price ? `₦${u.shop_price.toLocaleString()}` : "—"}</td>
+                          <td style={{ ...tdStyle, fontSize: 16 }}>{u.is_verified ? "✅" : "—"}</td>
+                          <td style={{ ...tdStyle, fontSize: 16 }}>{u.is_boosted ? "🚀" : "—"}</td>
+                          <td style={{ ...tdStyle, fontSize: 16 }}>{u.is_available !== false ? "🟢" : "🔴"}</td>
+                          <td style={tdStyle}>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <Btn small onClick={() => verifyUser(u.id, u.is_verified)} outline color={GREEN}>{u.is_verified ? "Unverify" : "Verify"}</Btn>
+                              <Btn small onClick={() => boostUser(u.id, u.is_boosted)} outline color={GOLD}>{u.is_boosted ? "Unboost" : "Boost"}</Btn>
+                              <Btn small onClick={() => suspendUser(u.id, u.account_status)} danger>{u.account_status === "suspended" ? "Unsuspend" : "Suspend"}</Btn>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
+            </div>
+          )}
 
-              {users.length === 0 ? (
-                <div style={{ background: CARD, borderRadius: 16, padding: 60, textAlign: "center", border: `1px solid ${BORDER}` }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>👥</div>
-                  <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 18, marginBottom: 8 }}>No users yet</h3>
-                  <p style={{ color: MUTED, fontSize: 13 }}>Share your app link to get your first users!</p>
-                  <div style={{ marginTop: 20, background: DARK3, borderRadius: 12, padding: 16, border: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>YOUR APP LINK</div>
-                    <div style={{ fontSize: 14, color: GOLD, fontWeight: 600 }}>stylex-mauve.vercel.app</div>
-                  </div>
+          {/* ════════════════ POSTS & FEED ════════════════ */}
+          {!loading && activeTab === "posts" && (
+            <div>
+              <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
+                {["all", "photo", "video"].map(f => (
+                  <button key={f} onClick={() => setPostFilter(f)} style={{ background: postFilter === f ? `${GOLD}15` : DARK3, border: `1px solid ${postFilter === f ? GOLD : BORDER}`, borderRadius: 8, color: postFilter === f ? GOLD : MUTED, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{f === "all" ? `All Posts (${posts.length})` : `${f === "photo" ? "📷" : "🎬"} ${f}s (${posts.filter(p => p.media_type === f).length})`}</button>
+                ))}
+              </div>
+              {posts.length === 0 ? (
+                <div style={{ background: CARD, borderRadius: 14, padding: 60, textAlign: "center", border: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🎬</div>
+                  <p style={{ color: MUTED }}>No posts yet</p>
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {users.map((user, i) => (
-                    <div key={i} style={{ background: CARD, borderRadius: 14, padding: "18px 20px", border: `1px solid ${BORDER}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                        <div style={{ width: 44, height: 44, borderRadius: "50%", background: `${GOLD}22`, border: `1.5px solid ${GOLD}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: GOLD }}>
-                          {(user.full_name || user.email || "U").slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{user.full_name || "No name"}</div>
-                          <div style={{ fontSize: 12, color: MUTED }}>{user.email}</div>
-                          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
-                            {user.location && `📍 ${user.location}`}
-                            {user.phone && ` · 📱 ${user.phone}`}
-                            {user.category && ` · ✂️ ${user.category}`}
-                          </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+                  {(postFilter === "all" ? posts : posts.filter(p => p.media_type === postFilter)).map((p, i) => (
+                    <div key={i} style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                      <div style={{ height: 160, background: DARK3, position: "relative", overflow: "hidden" }}>
+                        {p.media_type === "video"
+                          ? <video src={p.media_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} muted />
+                          : <img src={p.media_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                        <div style={{ position: "absolute", top: 8, right: 8 }}>
+                          <StatusBadge status={p.media_type || "photo"} />
                         </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <StatusBadge status={user.user_type || "client"} />
-                        <div style={{ fontSize: 11, color: MUTED }}>{user.created_at ? new Date(user.created_at).toLocaleDateString() : "—"}</div>
-                        <button onClick={() => deleteUser(user.id)} style={{ background: `${RED}22`, border: `1px solid ${RED}44`, borderRadius: 8, color: RED, padding: "6px 12px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Remove</button>
+                      <div style={{ padding: "12px 14px" }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 2 }}>{p.pro_name || "Unknown"}</div>
+                        <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>{p.caption || "No caption"}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 12 }}>
+                            <span style={{ fontSize: 12, color: MUTED }}>❤️ {p.likes || 0}</span>
+                            <span style={{ fontSize: 12, color: MUTED }}>💬 {p.comments || 0}</span>
+                          </div>
+                          <Btn small danger onClick={() => deletePost(p.id)}>🗑️ Delete</Btn>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -364,48 +572,27 @@ function AdminPanel({ onLogout }) {
             </div>
           )}
 
-          {/* ── BOOKINGS ── */}
-          {!loading && activeTab === "bookings" && (
+          {/* ════════════════ COMMENTS ════════════════ */}
+          {!loading && activeTab === "comments" && (
             <div>
-              <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
-                {[
-                  { label: "Total", val: bookings.length, color: BLUE },
-                  { label: "Confirmed", val: bookings.filter(b => b.status === "confirmed").length, color: GREEN },
-                  { label: "Pending", val: bookings.filter(b => b.status === "pending").length, color: GOLD },
-                  { label: "Cancelled", val: bookings.filter(b => b.status === "cancelled").length, color: RED },
-                ].map(s => (
-                  <div key={s.label} style={{ background: CARD, borderRadius: 12, padding: "14px 20px", border: `1px solid ${BORDER}`, minWidth: 100 }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.val}</div>
-                    <div style={{ fontSize: 11, color: MUTED }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-
-              {bookings.length === 0 ? (
-                <div style={{ background: CARD, borderRadius: 16, padding: 60, textAlign: "center", border: `1px solid ${BORDER}` }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>📅</div>
-                  <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 18, marginBottom: 8 }}>No bookings yet</h3>
-                  <p style={{ color: MUTED, fontSize: 13 }}>Bookings will appear here when users start booking professionals</p>
+              <div style={{ fontSize: 13, color: MUTED, marginBottom: 16 }}>{comments.length} total comments across all posts</div>
+              {comments.length === 0 ? (
+                <div style={{ background: CARD, borderRadius: 14, padding: 60, textAlign: "center", border: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
+                  <p style={{ color: MUTED }}>No comments yet</p>
                 </div>
               ) : (
-                <div style={{ background: CARD, borderRadius: 16, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                        {["Reference", "Service", "Date", "Time", "Amount", "Status"].map(h => (
-                          <th key={h} style={{ padding: "14px 16px", textAlign: "left", fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1 }}>{h.toUpperCase()}</th>
-                        ))}
-                      </tr>
-                    </thead>
+                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["User", "Comment", "Post ID", "Date", "Action"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
                     <tbody>
-                      {bookings.map((b, i) => (
-                        <tr key={i} style={{ borderBottom: `1px solid ${BORDER}22` }}>
-                          <td style={{ padding: "14px 16px", fontSize: 11, color: GOLD, fontFamily: "monospace" }}>{b.reference}</td>
-                          <td style={{ padding: "14px 16px", fontSize: 13, color: TEXT }}>{b.service}</td>
-                          <td style={{ padding: "14px 16px", fontSize: 12, color: MUTED }}>{b.date}</td>
-                          <td style={{ padding: "14px 16px", fontSize: 12, color: MUTED }}>{b.time}</td>
-                          <td style={{ padding: "14px 16px", fontSize: 13, color: GOLD, fontWeight: 700 }}>₦{b.price?.toLocaleString()}</td>
-                          <td style={{ padding: "14px 16px" }}><StatusBadge status={b.status || "pending"} /></td>
+                      {comments.map((c, i) => (
+                        <tr key={i}>
+                          <td style={{ ...tdStyle, color: TEXT, fontWeight: 600 }}>{c.user_name || "—"}</td>
+                          <td style={{ ...tdStyle, color: MUTED, maxWidth: 300 }}>{c.text}</td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 11, fontFamily: "monospace" }}>{c.post_id?.slice(0, 8)}...</td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 11 }}>{c.created_at ? new Date(c.created_at).toLocaleDateString() : "—"}</td>
+                          <td style={tdStyle}><Btn small danger onClick={() => deleteComment(c.id)}>🗑️ Delete</Btn></td>
                         </tr>
                       ))}
                     </tbody>
@@ -415,82 +602,256 @@ function AdminPanel({ onLogout }) {
             </div>
           )}
 
-          {/* ── REVENUE ── */}
+          {/* ════════════════ BOOKINGS ════════════════ */}
+          {!loading && activeTab === "bookings" && (
+            <div>
+              <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+                {["all", "confirmed", "pending", "cancelled"].map(f => (
+                  <button key={f} onClick={() => setBookingFilter(f)} style={{ background: bookingFilter === f ? `${GOLD}15` : DARK3, border: `1px solid ${bookingFilter === f ? GOLD : BORDER}`, borderRadius: 8, color: bookingFilter === f ? GOLD : MUTED, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{f === "all" ? `All (${bookings.length})` : `${f} (${bookings.filter(b => b.status === f).length})`}</button>
+                ))}
+              </div>
+              {bookings.length === 0 ? (
+                <div style={{ background: CARD, borderRadius: 14, padding: 60, textAlign: "center", border: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
+                  <p style={{ color: MUTED }}>No bookings yet</p>
+                </div>
+              ) : (
+                <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["Reference", "Service", "Type", "Date", "Time", "Amount", "Status", "Actions"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {(bookingFilter === "all" ? bookings : bookings.filter(b => b.status === bookingFilter)).map((b, i) => (
+                        <tr key={i}>
+                          <td style={{ ...tdStyle, color: GOLD, fontFamily: "monospace", fontSize: 11 }}>{b.reference}</td>
+                          <td style={{ ...tdStyle, color: TEXT }}>{b.service}</td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 12 }}>{b.service_type || "—"}</td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 12 }}>{b.date}</td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 12 }}>{b.time}</td>
+                          <td style={{ ...tdStyle, color: GREEN, fontWeight: 700 }}>₦{b.price?.toLocaleString()}</td>
+                          <td style={tdStyle}><StatusBadge status={b.status || "pending"} /></td>
+                          <td style={tdStyle}>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <Btn small onClick={() => updateBooking(b.id, "confirmed")} outline color={GREEN}>Confirm</Btn>
+                              <Btn small onClick={() => updateBooking(b.id, "cancelled")} danger>Cancel</Btn>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ════════════════ MARKETPLACE ════════════════ */}
+          {!loading && activeTab === "marketplace" && (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 20 }}>
+                {[
+                  { label: "Total Products", value: products.length, color: GOLD },
+                  { label: "Active", value: products.filter(p => p.status === "active").length, color: GREEN },
+                  { label: "Removed", value: products.filter(p => p.status === "removed").length, color: RED },
+                  { label: "Total Value", value: `₦${products.filter(p => p.status === "active").reduce((s, p) => s + (p.price || 0), 0).toLocaleString()}`, color: BLUE },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: CARD, borderRadius: 14, padding: 18, border: `1px solid ${BORDER}` }}>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>{s.label.toUpperCase()}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+                {["all", "active", "removed"].map(f => (
+                  <button key={f} onClick={() => setProductFilter(f)} style={{ background: productFilter === f ? `${GOLD}15` : DARK3, border: `1px solid ${productFilter === f ? GOLD : BORDER}`, borderRadius: 8, color: productFilter === f ? GOLD : MUTED, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{f === "all" ? `All (${products.length})` : `${f} (${products.filter(p => p.status === f).length})`}</button>
+                ))}
+              </div>
+              {products.length === 0 ? (
+                <div style={{ background: CARD, borderRadius: 14, padding: 60, textAlign: "center", border: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🛍️</div>
+                  <p style={{ color: MUTED }}>No products listed yet</p>
+                </div>
+              ) : (
+                <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["Product", "Seller", "Category", "Price", "STYLEX Fee (5%)", "Status", "Actions"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {(productFilter === "all" ? products : products.filter(p => p.status === productFilter)).map((p, i) => (
+                        <tr key={i} style={{ opacity: p.status === "removed" ? 0.5 : 1 }}>
+                          <td style={tdStyle}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <span style={{ fontSize: 22 }}>{p.emoji || "🛍️"}</span>
+                              <span style={{ color: TEXT, fontWeight: 600, fontSize: 13 }}>{p.name}</span>
+                            </div>
+                          </td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 12 }}>{p.seller_name || "—"}</td>
+                          <td style={{ ...tdStyle, color: MUTED, fontSize: 12 }}>{p.category || "—"}</td>
+                          <td style={{ ...tdStyle, color: GOLD, fontWeight: 700 }}>₦{p.price?.toLocaleString()}</td>
+                          <td style={{ ...tdStyle, color: GREEN }}>₦{Math.round((p.price || 0) * 0.05).toLocaleString()}</td>
+                          <td style={tdStyle}><StatusBadge status={p.status || "active"} /></td>
+                          <td style={tdStyle}>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <Btn small onClick={() => toggleProductStatus(p.id, p.status)} outline color={p.status === "active" ? RED : GREEN}>{p.status === "active" ? "Remove" : "Restore"}</Btn>
+                              <Btn small danger onClick={() => deleteProduct(p.id)}>Delete</Btn>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ════════════════ PARTNERSHIPS ════════════════ */}
+          {!loading && activeTab === "collabs" && (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 20 }}>
+                {[
+                  { label: "Total Requests", value: collabs.length, color: GOLD },
+                  { label: "New", value: collabs.filter(c => c.status === "new").length, color: RED },
+                  { label: "Reviewing", value: collabs.filter(c => c.status === "reviewing").length, color: GOLD },
+                  { label: "Approved", value: collabs.filter(c => c.status === "approved").length, color: GREEN },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: CARD, borderRadius: 14, padding: 18, border: `1px solid ${BORDER}` }}>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>{s.label.toUpperCase()}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+              {collabs.length === 0 ? (
+                <div style={{ background: CARD, borderRadius: 14, padding: 60, textAlign: "center", border: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🤝</div>
+                  <p style={{ color: MUTED }}>No partnership requests yet</p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {collabs.map((c, i) => (
+                    <div key={i} style={{ background: CARD, borderRadius: 14, padding: 20, border: `1px solid ${c.status === "new" ? GOLD + "55" : BORDER}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: TEXT }}>{c.company_name}</div>
+                            <StatusBadge status={c.request_type || "collaboration"} />
+                            <StatusBadge status={c.status || "new"} />
+                          </div>
+                          <div style={{ fontSize: 13, color: GOLD, marginBottom: 6 }}>📧 {c.contact_email}</div>
+                          <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.6 }}>{c.message}</div>
+                          <div style={{ fontSize: 11, color: MUTED, marginTop: 8 }}>{c.created_at ? new Date(c.created_at).toLocaleDateString() : "—"}</div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <Btn small onClick={() => updateCollab(c.id, "reviewing")} outline color={GOLD}>Mark Reviewing</Btn>
+                          <Btn small onClick={() => updateCollab(c.id, "approved")} outline color={GREEN}>✅ Approve</Btn>
+                          <Btn small onClick={() => updateCollab(c.id, "rejected")} danger>❌ Reject</Btn>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ════════════════ REVENUE ════════════════ */}
           {!loading && activeTab === "revenue" && (
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 26 }}>
                 {[
-                  { label: "Total Revenue", value: `₦${stats.revenue.toLocaleString()}`, sub: "All time", color: GOLD },
-                  { label: "Platform Commission", value: `₦${Math.round(stats.revenue * 0.05).toLocaleString()}`, sub: "5% of bookings", color: GREEN },
+                  { label: "Total Booking Revenue", value: `₦${stats.revenue.toLocaleString()}`, sub: "All bookings", color: GOLD },
+                  { label: "Platform Earnings (20%)", value: `₦${Math.round(stats.revenue * 0.20).toLocaleString()}`, sub: "Booking commission", color: GREEN },
+                  { label: "Product Revenue", value: `₦${products.filter(p => p.status === "active").reduce((s, p) => s + (p.price || 0), 0).toLocaleString()}`, sub: "Total product value", color: BLUE },
+                  { label: "Product Fees (5%)", value: `₦${Math.round(products.filter(p => p.status === "active").reduce((s, p) => s + (p.price || 0), 0) * 0.05).toLocaleString()}`, sub: "5% product commission", color: GREEN },
                   { label: "Total Bookings", value: stats.bookings, sub: "All time", color: BLUE },
                   { label: "Avg Booking Value", value: stats.bookings > 0 ? `₦${Math.round(stats.revenue / stats.bookings).toLocaleString()}` : "₦0", sub: "Per booking", color: "#B56C8A" },
                 ].map((s, i) => (
-                  <div key={i} style={{ background: CARD, borderRadius: 16, padding: 20, border: `1px solid ${BORDER}` }}>
-                    <div style={{ height: 3, background: `linear-gradient(90deg, ${s.color}, ${s.color}44)`, borderRadius: 2, marginBottom: 14 }} />
-                    <div style={{ fontSize: 11, color: MUTED, letterSpacing: 1, marginBottom: 6 }}>{s.label.toUpperCase()}</div>
-                    <div style={{ fontSize: 26, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  <div key={i} style={{ background: CARD, borderRadius: 14, padding: 18, border: `1px solid ${BORDER}`, position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${s.color}, ${s.color}44)` }} />
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>{s.label.toUpperCase()}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
                     <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{s.sub}</div>
                   </div>
                 ))}
               </div>
 
-              {bookings.length === 0 ? (
-                <div style={{ background: CARD, borderRadius: 16, padding: 60, textAlign: "center", border: `1px solid ${BORDER}` }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>💰</div>
-                  <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 18, marginBottom: 8 }}>No revenue yet</h3>
-                  <p style={{ color: MUTED, fontSize: 13 }}>Revenue will appear here when users start paying for bookings</p>
+              {/* Revenue breakdown */}
+              <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden", marginBottom: 18 }}>
+                <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}` }}>
+                  <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 14, margin: 0 }}>All Booking Transactions</h3>
                 </div>
-              ) : (
-                <div style={{ background: CARD, borderRadius: 16, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
-                  <div style={{ padding: "18px 22px", borderBottom: `1px solid ${BORDER}` }}>
-                    <h3 style={{ color: TEXT, fontWeight: 700, fontSize: 15, margin: 0 }}>All Transactions</h3>
+                {bookings.length === 0 ? <div style={{ padding: 40, textAlign: "center", color: MUTED }}>No transactions yet</div> : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["Reference", "Service", "Amount", "Platform (20%)", "Pro Receives", "Date", "Status"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {bookings.map((b, i) => {
+                          const comm = Math.round((b.price || 0) * 0.20);
+                          const proGets = (b.price || 0) - comm;
+                          return (
+                            <tr key={i}>
+                              <td style={{ ...tdStyle, color: GOLD, fontFamily: "monospace", fontSize: 11 }}>{b.reference}</td>
+                              <td style={{ ...tdStyle, color: TEXT }}>{b.service}</td>
+                              <td style={{ ...tdStyle, color: GOLD, fontWeight: 700 }}>₦{b.price?.toLocaleString()}</td>
+                              <td style={{ ...tdStyle, color: GREEN }}>₦{comm.toLocaleString()}</td>
+                              <td style={{ ...tdStyle, color: MUTED }}>₦{proGets.toLocaleString()}</td>
+                              <td style={{ ...tdStyle, color: MUTED, fontSize: 11 }}>{b.created_at ? new Date(b.created_at).toLocaleDateString() : "—"}</td>
+                              <td style={tdStyle}><StatusBadge status={b.status || "pending"} /></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                        {["Reference", "Service", "Amount", "Commission (5%)", "Date", "Status"].map(h => (
-                          <th key={h} style={{ padding: "14px 16px", textAlign: "left", fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1 }}>{h.toUpperCase()}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookings.map((b, i) => (
-                        <tr key={i} style={{ borderBottom: `1px solid ${BORDER}22` }}>
-                          <td style={{ padding: "14px 16px", fontSize: 11, color: GOLD, fontFamily: "monospace" }}>{b.reference}</td>
-                          <td style={{ padding: "14px 16px", fontSize: 13, color: TEXT }}>{b.service}</td>
-                          <td style={{ padding: "14px 16px", fontSize: 13, color: GOLD, fontWeight: 700 }}>₦{b.price?.toLocaleString()}</td>
-                          <td style={{ padding: "14px 16px", fontSize: 12, color: GREEN }}>₦{Math.round((b.price || 0) * 0.05).toLocaleString()}</td>
-                          <td style={{ padding: "14px 16px", fontSize: 12, color: MUTED }}>{b.created_at ? new Date(b.created_at).toLocaleDateString() : "—"}</td>
-                          <td style={{ padding: "14px 16px" }}><StatusBadge status={b.status || "pending"} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 
-          {/* ── SETTINGS ── */}
+          {/* ════════════════ SETTINGS ════════════════ */}
           {!loading && activeTab === "settings" && (
-            <div style={{ maxWidth: 600 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ maxWidth: 680 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {[
-                  { title: "Platform Commission Rate", desc: "Current rate charged per booking", value: "5%" },
-                  { title: "Admin Email", desc: "Login email for admin panel", value: ADMIN_EMAIL },
-                  { title: "App Name", desc: "Display name across the platform", value: "STYLEX" },
-                  { title: "Live App URL", desc: "Your public app URL", value: "stylex-mauve.vercel.app" },
-                  { title: "Database", desc: "Supabase project", value: "utvrujgqzheifblizarw" },
-                  { title: "Supported Cities", desc: "Cities where service is active", value: "Lagos, Abuja, Port Harcourt, Enugu" },
-                ].map((setting, i) => (
-                  <div key={i} style={{ background: CARD, borderRadius: 14, padding: "18px 20px", border: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+                  { title: "Platform Name", desc: "App display name", value: "STYLEX" },
+                  { title: "Live App URL", desc: "Public production URL", value: "stylex-mauve.vercel.app" },
+                  { title: "Admin Email", desc: "Founder login", value: ADMIN_EMAIL },
+                  { title: "Database", desc: "Supabase project ref", value: "utvrujgqzheifblizarw" },
+                  { title: "Booking Commission", desc: "Platform fee on every booking", value: "20%" },
+                  { title: "Product Commission", desc: "Platform fee on marketplace sales", value: "5%" },
+                  { title: "Verification Plan (Monthly)", desc: "Cost to get verified badge", value: "₦2,500/mo" },
+                  { title: "Boost Plan (Monthly)", desc: "Cost to boost profile", value: "₦5,000/mo" },
+                  { title: "Countries Supported", desc: "Global marketplace reach", value: "20 countries" },
+                  { title: "Version", desc: "Current app version", value: "1.0.0" },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: CARD, borderRadius: 12, padding: "16px 20px", border: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 3 }}>{setting.title}</div>
-                      <div style={{ fontSize: 12, color: MUTED }}>{setting.desc}</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 3 }}>{s.title}</div>
+                      <div style={{ fontSize: 12, color: MUTED }}>{s.desc}</div>
                     </div>
-                    <span style={{ fontSize: 13, color: GOLD, fontWeight: 600 }}>{setting.value}</span>
+                    <span style={{ fontSize: 13, color: GOLD, fontWeight: 700, fontFamily: s.title === "Database" ? "monospace" : "inherit" }}>{s.value}</span>
                   </div>
                 ))}
+              </div>
+
+              {/* Platform stats summary */}
+              <div style={{ background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 20, marginTop: 20 }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: GOLD, marginBottom: 14 }}>📊 Live Platform Summary</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  {[
+                    { label: "Total Users", value: stats.users },
+                    { label: "Professionals", value: stats.professionals },
+                    { label: "Total Posts", value: stats.posts },
+                    { label: "Total Bookings", value: stats.bookings },
+                    { label: "Products Listed", value: stats.products },
+                    { label: "Collab Requests", value: stats.collabs },
+                    { label: "Total Follows", value: follows.length },
+                    { label: "Total Comments", value: comments.length },
+                  ].map((s, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: DARK3, borderRadius: 9 }}>
+                      <span style={{ fontSize: 12, color: MUTED }}>{s.label}</span>
+                      <span style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>{s.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
