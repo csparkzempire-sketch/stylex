@@ -1341,8 +1341,26 @@ function CollabModal({ user, onClose }) {
       sender_id: user?.id || null,
       status: "new"
     });
+    if (insErr) { setSaving(false); setError(insErr.message); return; }
+
+    // Send email notification to founder
+    try {
+      await fetch("/api/collab-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: company.trim(),
+          contact_email: email.trim(),
+          request_type: type,
+          message: message.trim(),
+        }),
+      });
+    } catch (e) {
+      // Email failure shouldn't block the user — request is already saved
+      console.error("Email notification failed:", e);
+    }
+
     setSaving(false);
-    if (insErr) { setError(insErr.message); return; }
     setDone(true);
     setTimeout(() => { setDone(false); onClose(); }, 2200);
   };
