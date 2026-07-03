@@ -1,3 +1,4 @@
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from "recharts";
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -92,6 +93,230 @@ function AdminLogin({ onLogin }) {
           {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: RED }}>⚠️ {error}</div>}
           <button onClick={handleLogin} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: "#0A0A0B", border: "none", borderRadius: 12, padding: "14px", fontWeight: 800, fontSize: 14, cursor: "pointer", marginTop: 6 }}>Access Admin Panel →</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── ANALYTICS PANEL ───
+function AnalyticsPanel({ bookings, users, posts, products, stats }) {
+  const [period, setPeriod] = useState("monthly");
+
+  // ── helpers ──
+  const monthName = (d) => ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][new Date(d).getMonth()];
+  const weekLabel = (d) => { const day = new Date(d); const week = Math.ceil(day.getDate() / 7); return `W${week} ${monthName(d)}`; };
+  const now = new Date();
+
+  // Build revenue data grouped by period
+  const buildRevenueData = () => {
+    if (period === "weekly") {
+      // Last 8 weeks
+      const weeks = [];
+      for (let i = 7; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(now.getDate() - i * 7);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 7);
+        const label = `W${8 - i}`;
+        const rev = bookings.filter(b => { const d = new Date(b.created_at); return d >= start && d < end; }).reduce((s, b) => s + (b.price || 0), 0);
+        const newUsers = users.filter(u => { const d = new Date(u.created_at); return d >= start && d < end; }).length;
+        const newPosts = posts.filter(p => { const d = new Date(p.created_at); return d >= start && d < end; }).length;
+        weeks.push({ label, revenue: rev, commission: Math.round(rev * 0.20), users: newUsers, posts: newPosts });
+      }
+      return weeks;
+    }
+    if (period === "monthly") {
+      // Last 12 months
+      const months = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const label = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()] + " " + String(d.getFullYear()).slice(2);
+        const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        const rev = bookings.filter(b => { const bd = new Date(b.created_at); return bd >= d && bd < next; }).reduce((s, b) => s + (b.price || 0), 0);
+        const newUsers = users.filter(u => { const ud = new Date(u.created_at); return ud >= d && ud < next; }).length;
+        const newPosts = posts.filter(p => { const pd = new Date(p.created_at); return pd >= d && pd < next; }).length;
+        months.push({ label, revenue: rev, commission: Math.round(rev * 0.20), users: newUsers, posts: newPosts });
+      }
+      return months;
+    }
+    // Annual — last 3 years
+    const years = [];
+    for (let i = 2; i >= 0; i--) {
+      const yr = now.getFullYear() - i;
+      const rev = bookings.filter(b => new Date(b.created_at).getFullYear() === yr).reduce((s, b) => s + (b.price || 0), 0);
+      const newUsers = users.filter(u => new Date(u.created_at).getFullYear() === yr).length;
+      const newPosts = posts.filter(p => new Date(p.created_at).getFullYear() === yr).length;
+      years.push({ label: String(yr), revenue: rev, commission: Math.round(rev * 0.20), users: newUsers, posts: newPosts });
+    }
+    return years;
+  };
+
+  const data = buildRevenueData();
+  const totalRev = data.reduce((s, d) => s + d.revenue, 0);
+  const totalComm = data.reduce((s, d) => s + d.commission, 0);
+  const prevHalf = data.slice(0, Math.floor(data.length / 2)).reduce((s, d) => s + d.revenue, 0);
+  const currHalf = data.slice(Math.floor(data.length / 2)).reduce((s, d) => s + d.revenue, 0);
+  const trend = prevHalf === 0 ? null : ((currHalf - prevHalf) / prevHalf * 100).toFixed(1);
+  const trendUp = trend === null ? null : parseFloat(trend) >= 0;
+
+  const tooltipStyle = { background: "#16161C", border: "1px solid #2A2A35", borderRadius: 10, fontSize: 12, color: "#F0EDE8" };
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+    return (
+      <div style={tooltipStyle}>
+        <div style={{ padding: "8px 14px", borderBottom: "1px solid #2A2A35", fontWeight: 700, color: "#C9A84C" }}>{label}</div>
+        <div style={{ padding: "8px 14px" }}>
+          {payload.map((p, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: p.color }} />
+              <span style={{ color: "#888898" }}>{p.name}:</span>
+              <span style={{ color: "#F0EDE8", fontWeight: 700 }}>{p.name.includes("Revenue") || p.name.includes("Commission") ? "₦" + p.value.toLocaleString() : p.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* Period selector */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 24, alignItems: "center" }}>
+        <span style={{ fontSize: 13, color: "#888898", fontWeight: 600 }}>View by:</span>
+        {["weekly", "monthly", "annual"].map(p => (
+          <button key={p} onClick={() => setPeriod(p)} style={{ background: period === p ? `linear-gradient(135deg, #C9A84C, #E8D08A)` : "#1A1A1F", border: `1px solid ${period === p ? "#C9A84C" : "#2A2A35"}`, borderRadius: 8, color: period === p ? "#0A0A0B" : "#888898", padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", textTransform: "capitalize" }}>{p}</button>
+        ))}
+      </div>
+
+      {/* Summary cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 26 }}>
+        {[
+          { label: `${period.charAt(0).toUpperCase() + period.slice(1)} Revenue`, value: `₦${totalRev.toLocaleString()}`, icon: "💰", color: "#C9A84C" },
+          { label: "Platform Earnings", value: `₦${totalComm.toLocaleString()}`, icon: "📈", color: "#4CAF50" },
+          { label: "Trend", value: trend === null ? "No data" : `${trendUp ? "▲" : "▼"} ${Math.abs(trend)}%`, icon: trendUp ? "🟢" : "🔴", color: trendUp ? "#4CAF50" : "#FF5555" },
+          { label: "Total Users", value: stats.users, icon: "👥", color: "#5B9BD5" },
+          { label: "Total Posts", value: stats.posts, icon: "🎬", color: "#C9A84C" },
+          { label: "Products", value: stats.products, icon: "🛍️", color: "#B56C8A" },
+        ].map((s, i) => (
+          <div key={i} style={{ background: "#16161C", borderRadius: 14, padding: 18, border: `1px solid #2A2A35`, position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${s.color}, ${s.color}44)` }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <div style={{ fontSize: 10, color: "#888898", fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>{s.label.toUpperCase()}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
+              </div>
+              <span style={{ fontSize: 22 }}>{s.icon}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Revenue Area Chart */}
+      <div style={{ background: "#16161C", borderRadius: 16, border: "1px solid #2A2A35", padding: 24, marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <h3 style={{ color: "#F0EDE8", fontWeight: 800, fontSize: 15, margin: "0 0 4px" }}>📈 Revenue Over Time</h3>
+            <div style={{ fontSize: 12, color: "#888898" }}>Total booking revenue vs platform earnings (20%)</div>
+          </div>
+          {trend !== null && (
+            <div style={{ background: trendUp ? "#4CAF5022" : "#FF555522", border: `1px solid ${trendUp ? "#4CAF5044" : "#FF555544"}`, borderRadius: 10, padding: "6px 14px", fontSize: 13, fontWeight: 700, color: trendUp ? "#4CAF50" : "#FF5555" }}>
+              {trendUp ? "▲" : "▼"} {Math.abs(trend)}% vs previous period
+            </div>
+          )}
+        </div>
+        {totalRev === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 0", color: "#888898" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
+            <div>No revenue data yet — bookings will populate this chart automatically</div>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={data}>
+              <defs>
+                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#C9A84C" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#C9A84C" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="commGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#4CAF50" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#4CAF50" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A3522" />
+              <XAxis dataKey="label" tick={{ fill: "#888898", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "#888898", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₦${(v/1000).toFixed(0)}k`} />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 12, color: "#888898", paddingTop: 16 }} />
+              <Area type="monotone" dataKey="revenue" name="Total Revenue" stroke="#C9A84C" strokeWidth={2.5} fill="url(#revGrad)" dot={{ fill: "#C9A84C", r: 3 }} />
+              <Area type="monotone" dataKey="commission" name="Platform Earnings" stroke="#4CAF50" strokeWidth={2} fill="url(#commGrad)" dot={{ fill: "#4CAF50", r: 3 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* User Growth Bar Chart */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 20 }}>
+        <div style={{ background: "#16161C", borderRadius: 16, border: "1px solid #2A2A35", padding: 24 }}>
+          <h3 style={{ color: "#F0EDE8", fontWeight: 800, fontSize: 15, margin: "0 0 4px" }}>👥 User Growth</h3>
+          <div style={{ fontSize: 12, color: "#888898", marginBottom: 20 }}>New signups per {period === "annual" ? "year" : period === "monthly" ? "month" : "week"}</div>
+          {data.every(d => d.users === 0) ? (
+            <div style={{ textAlign: "center", padding: "30px 0", color: "#888898", fontSize: 13 }}>No signup data yet</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2A2A3522" />
+                <XAxis dataKey="label" tick={{ fill: "#888898", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#888898", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="users" name="New Users" fill="#5B9BD5" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div style={{ background: "#16161C", borderRadius: 16, border: "1px solid #2A2A35", padding: 24 }}>
+          <h3 style={{ color: "#F0EDE8", fontWeight: 800, fontSize: 15, margin: "0 0 4px" }}>🎬 Post Activity</h3>
+          <div style={{ fontSize: 12, color: "#888898", marginBottom: 20 }}>New posts per {period === "annual" ? "year" : period === "monthly" ? "month" : "week"}</div>
+          {data.every(d => d.posts === 0) ? (
+            <div style={{ textAlign: "center", padding: "30px 0", color: "#888898", fontSize: 13 }}>No post data yet</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2A2A3522" />
+                <XAxis dataKey="label" tick={{ fill: "#888898", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#888898", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="posts" name="New Posts" fill="#C9A84C" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* Revenue breakdown line chart */}
+      <div style={{ background: "#16161C", borderRadius: 16, border: "1px solid #2A2A35", padding: 24 }}>
+        <h3 style={{ color: "#F0EDE8", fontWeight: 800, fontSize: 15, margin: "0 0 4px" }}>💹 Revenue vs Earnings Breakdown</h3>
+        <div style={{ fontSize: 12, color: "#888898", marginBottom: 20 }}>Side-by-side comparison of gross revenue and your net platform earnings</div>
+        {totalRev === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 0", color: "#888898" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>💹</div>
+            <div>Revenue data will appear here once bookings are made</div>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A3522" />
+              <XAxis dataKey="label" tick={{ fill: "#888898", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "#888898", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₦${(v/1000).toFixed(0)}k`} />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 12, color: "#888898", paddingTop: 16 }} />
+              <Line type="monotone" dataKey="revenue" name="Gross Revenue" stroke="#C9A84C" strokeWidth={2.5} dot={{ fill: "#C9A84C", r: 4 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="commission" name="Platform Earnings" stroke="#4CAF50" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: "#4CAF50", r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
@@ -431,6 +656,7 @@ function AdminPanel({ onLogout }) {
     { id: "marketplace", icon: "🛍️", label: "Marketplace" },
     { id: "collabs", icon: "🤝", label: "Partnerships" },
     { id: "revenue", icon: "💰", label: "Revenue" },
+    { id: "analytics", icon: "📈", label: "Analytics" },
     { id: "settings", icon: "⚙️", label: "Settings" },
   ];
 
@@ -976,6 +1202,12 @@ function AdminPanel({ onLogout }) {
                 )}
               </div>
             </div>
+          )}
+
+
+          {/* ════════════════ ANALYTICS ════════════════ */}
+          {!loading && activeTab === "analytics" && (
+            <AnalyticsPanel bookings={bookings} users={users} posts={posts} products={products} stats={stats} />
           )}
 
           {/* ════════════════ SETTINGS ════════════════ */}
