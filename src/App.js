@@ -2483,7 +2483,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
   const initials = (myName || user?.name || "U").slice(0, 2).toUpperCase();
 
   return (
-    <div style={{ minHeight: "100vh", background: DARK, paddingBottom: 100 }}>
+    <div style={{ minHeight: "100vh", background: DARK, paddingBottom: 160 }}>
       {/* ── Header ── */}
       <div style={{ background: `linear-gradient(180deg, ${DARK2} 0%, ${DARK} 100%)`, padding: "28px 20px 0" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 16 }}>
@@ -2747,7 +2747,7 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
   const initials = (myName || pro.name || "P").slice(0, 2).toUpperCase();
 
   return (
-    <div style={{ minHeight: "100vh", background: DARK, paddingBottom: 100 }}>
+    <div style={{ minHeight: "100vh", background: DARK, paddingBottom: 160 }}>
       {/* Back button */}
       <div style={{ position: "sticky", top: 0, zIndex: 50, background: `${DARK}ee`, backdropFilter: "blur(10px)", padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${BORDER}` }}>
         <button onClick={onBack} style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 8, color: TEXT, width: 34, height: 34, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>←</button>
@@ -2976,6 +2976,15 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
               </div>
               <span style={{ color: MUTED, fontSize: 16 }}>›</span>
             </button>
+            {isOwner && (
+              <button onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }} style={{ background: `${RED}11`, border: `1px solid ${RED}33`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+                <span style={{ fontSize: 22 }}>🚪</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Log Out</div>
+                  <div style={{ fontSize: 12, color: MUTED }}>Sign out of your account</div>
+                </div>
+              </button>
+            )}
           </div>
         )}
       </div>
