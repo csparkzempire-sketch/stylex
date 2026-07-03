@@ -2426,6 +2426,361 @@ const COUNTRIES = [
   { code: "AU", flag: "🇦🇺", name: "Australia" },
 ];
 
+// ─── NOTIFICATIONS SETTINGS PAGE ───
+function NotificationsSettingsPage({ user, onBack }) {
+  const NOTIF_KEYS = [
+    { key: "bookings", label: "Booking confirmations", sub: "When a booking is confirmed or cancelled" },
+    { key: "messages", label: "New messages", sub: "Messages from professionals" },
+    { key: "promos", label: "Promotions & offers", sub: "Deals and special offers from STYLEX" },
+    { key: "followers", label: "New followers", sub: "When someone follows you" },
+    { key: "activity", label: "Post likes & comments", sub: "Activity on your posts" },
+    { key: "updates", label: "App updates", sub: "New features and announcements" },
+  ];
+  const [prefs, setPrefs] = useState({ bookings: true, messages: true, promos: true, followers: true, activity: true, updates: true });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!user) { setLoading(false); return; }
+    supabase.from("profiles").select("notification_settings").eq("id", user.id).maybeSingle()
+      .then(({ data }) => {
+        if (data && data.notification_settings) setPrefs({ ...prefs, ...data.notification_settings });
+        setLoading(false);
+      });
+  }, [user]);
+
+  const toggle = async (key) => {
+    const updated = { ...prefs, [key]: !prefs[key] };
+    setPrefs(updated);
+    setSaving(true);
+    await supabase.from("profiles").update({ notification_settings: updated }).eq("id", user.id);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, margin: 0 }}>🔔 Notifications</h3>
+        {saving && <span style={{ fontSize: 11, color: MUTED }}>Saving...</span>}
+        {saved && <span style={{ fontSize: 11, color: GREEN }}>✓ Saved</span>}
+      </div>
+      {loading ? <div style={{ textAlign: "center", padding: 30, color: MUTED }}>Loading...</div> : (
+        NOTIF_KEYS.map(item => (
+          <div key={item.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: CARD, borderRadius: 14, padding: "14px 16px", marginBottom: 10, border: `1px solid ${BORDER}` }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
+            </div>
+            <button onClick={() => toggle(item.key)} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: prefs[item.key] ? GOLD : BORDER, position: "relative", flexShrink: 0 }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: prefs[item.key] ? 23 : 3, transition: "left 0.2s" }} />
+            </button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ─── PRIVACY SETTINGS PAGE ───
+function PrivacySettingsPage({ user, onBack, onDeleteAccount }) {
+  const [privacyPage, setPrivacyPage] = useState(null);
+  const [isPublic, setIsPublic] = useState(true);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("is_public").eq("id", user.id).maybeSingle()
+      .then(({ data }) => { if (data) setIsPublic(data.is_public !== false); });
+  }, [user]);
+
+  const toggleVisibility = async () => {
+    const newVal = !isPublic;
+    setIsPublic(newVal);
+    setVisibilitySaving(true);
+    await supabase.from("profiles").update({ is_public: newVal }).eq("id", user.id);
+    setVisibilitySaving(false);
+  };
+
+  const loadBlocked = async () => {
+    setLoadingBlocked(true);
+    const { data } = await supabase.from("blocked_users").select("*").eq("blocker_id", user.id);
+    setBlockedUsers(data || []);
+    setLoadingBlocked(false);
+  };
+
+  const unblock = async (blockedId) => {
+    await supabase.from("blocked_users").delete().eq("blocker_id", user.id).eq("blocked_id", blockedId);
+    setBlockedUsers(bs => bs.filter(b => b.blocked_id !== blockedId));
+  };
+
+  const handleChangePassword = async () => {
+    setPwError(""); setPwSuccess(false);
+    if (!newPassword) { setPwError("Enter a new password."); return; }
+    if (newPassword.length < 8) { setPwError("Password must be at least 8 characters."); return; }
+    if (newPassword !== confirmPassword) { setPwError("Passwords don't match."); return; }
+    setPwSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPwSaving(false);
+    if (error) { setPwError(error.message); return; }
+    setPwSuccess(true);
+    setNewPassword(""); setConfirmPassword(""); setOldPassword("");
+    setTimeout(() => { setPwSuccess(false); setPrivacyPage(null); }, 2000);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirm !== "DELETE") { setDeleteError('Type DELETE in capital letters to confirm.'); return; }
+    setDeleting(true);
+    await supabase.from("profiles").delete().eq("id", user.id);
+    await supabase.auth.signOut();
+    if (onDeleteAccount) onDeleteAccount();
+  };
+
+  const menuItems = [
+    { icon: "🔑", label: "Change Password", sub: "Update your account password", page: "password" },
+    { icon: "👁️", label: "Profile Visibility", sub: isPublic ? "Currently: Public" : "Currently: Private", page: "visibility" },
+    { icon: "🚫", label: "Blocked Users", sub: "Manage users you've blocked", page: "blocked", action: () => { loadBlocked(); setPrivacyPage("blocked"); } },
+    { icon: "🗑️", label: "Delete Account", sub: "Permanently delete your STYLEX account", page: "delete", danger: true },
+  ];
+
+  if (privacyPage === "password") return (
+    <div>
+      <button onClick={() => setPrivacyPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 20 }}>🔑 Change Password</h3>
+      {pwError && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {pwError}</div>}
+      {pwSuccess && <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: GREEN, marginBottom: 14 }}>✅ Password updated successfully!</div>}
+      {[
+        { label: "NEW PASSWORD", value: newPassword, set: setNewPassword, placeholder: "Min 8 characters" },
+        { label: "CONFIRM NEW PASSWORD", value: confirmPassword, set: setConfirmPassword, placeholder: "Re-enter new password" },
+      ].map(f => (
+        <div key={f.label} style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>{f.label}</label>
+          <input type="password" value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder} style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+        </div>
+      ))}
+      <GoldBtn onClick={handleChangePassword} disabled={pwSaving} style={{ width: "100%", padding: "13px", marginTop: 6 }}>
+        {pwSaving ? "Updating..." : "Update Password"}
+      </GoldBtn>
+    </div>
+  );
+
+  if (privacyPage === "visibility") return (
+    <div>
+      <button onClick={() => setPrivacyPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 8 }}>👁️ Profile Visibility</h3>
+      <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>Control whether your profile can be found and viewed by others on STYLEX.</p>
+      {[
+        { val: true, icon: "🌍", label: "Public", sub: "Anyone can view your profile and find you in Explore" },
+        { val: false, icon: "🔒", label: "Private", sub: "Only people you approve can see your profile" },
+      ].map(opt => (
+        <button key={String(opt.val)} onClick={() => { setIsPublic(opt.val); toggleVisibility(); }} style={{ width: "100%", background: isPublic === opt.val ? `${GOLD}15` : CARD, border: `1.5px solid ${isPublic === opt.val ? GOLD : BORDER}`, borderRadius: 14, padding: "16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", marginBottom: 12 }}>
+          <span style={{ fontSize: 24 }}>{opt.icon}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: isPublic === opt.val ? GOLD : TEXT }}>{opt.label}</div>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{opt.sub}</div>
+          </div>
+          <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${isPublic === opt.val ? GOLD : BORDER}`, background: isPublic === opt.val ? GOLD : "none", flexShrink: 0 }} />
+        </button>
+      ))}
+      {visibilitySaving && <div style={{ textAlign: "center", fontSize: 12, color: MUTED }}>Saving...</div>}
+    </div>
+  );
+
+  if (privacyPage === "blocked") return (
+    <div>
+      <button onClick={() => setPrivacyPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🚫 Blocked Users</h3>
+      {loadingBlocked ? <div style={{ textAlign: "center", padding: 30, color: MUTED }}>Loading...</div>
+        : blockedUsers.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+            <p style={{ color: MUTED, fontSize: 13 }}>You haven't blocked anyone</p>
+          </div>
+        ) : blockedUsers.map(b => (
+          <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD, borderRadius: 14, padding: "12px 14px", border: `1px solid ${BORDER}`, marginBottom: 10 }}>
+            <Avatar initials={(b.blocked_name || "U").slice(0, 2).toUpperCase()} size={40} color={MUTED} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{b.blocked_name || "Unknown User"}</div>
+            </div>
+            <button onClick={() => unblock(b.blocked_id)} style={{ background: `${RED}15`, border: `1px solid ${RED}33`, borderRadius: 8, color: RED, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Unblock</button>
+          </div>
+        ))
+      }
+    </div>
+  );
+
+  if (privacyPage === "delete") return (
+    <div>
+      <button onClick={() => setPrivacyPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: RED, fontWeight: 800, fontSize: 17, marginBottom: 8 }}>🗑️ Delete Account</h3>
+      <div style={{ background: `${RED}11`, border: `1px solid ${RED}33`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: RED, marginBottom: 8 }}>⚠️ This cannot be undone</div>
+        <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.6 }}>Deleting your account will permanently remove your profile, bookings, posts and all data from STYLEX.</div>
+      </div>
+      {deleteError && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {deleteError}</div>}
+      <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>TYPE "DELETE" TO CONFIRM</label>
+      <input value={deleteConfirm} onChange={e => { setDeleteConfirm(e.target.value); setDeleteError(""); }} placeholder='Type DELETE here' style={{ width: "100%", background: DARK3, border: `1.5px solid ${RED}55`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
+      <button onClick={handleDeleteAccount} disabled={deleting || deleteConfirm !== "DELETE"} style={{ width: "100%", background: deleteConfirm === "DELETE" ? RED : DARK3, border: "none", borderRadius: 12, color: deleteConfirm === "DELETE" ? "#fff" : MUTED, padding: "14px", fontSize: 14, fontWeight: 700, cursor: deleteConfirm === "DELETE" ? "pointer" : "not-allowed" }}>
+        {deleting ? "Deleting..." : "Permanently Delete My Account"}
+      </button>
+    </div>
+  );
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🔒 Privacy & Security</h3>
+      {menuItems.map(item => (
+        <button key={item.label} onClick={item.action || (() => setPrivacyPage(item.page))} style={{ background: item.danger ? `${RED}11` : CARD, border: `1px solid ${item.danger ? RED + "33" : BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
+          <span style={{ fontSize: 20 }}>{item.icon}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: item.danger ? RED : TEXT }}>{item.label}</div>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
+          </div>
+          <span style={{ color: MUTED, fontSize: 18 }}>›</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── LANGUAGE & REGION SETTINGS PAGE ───
+function LanguageSettingsPage({ user, onBack }) {
+  const [country, setCountry] = useState("NG");
+  const [language, setLanguage] = useState("English");
+  const [currency, setCurrency] = useState("NGN — Nigerian Naira (₦)");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!user) { setLoading(false); return; }
+    supabase.from("profiles").select("country, language, currency").eq("id", user.id).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          if (data.country) setCountry(data.country);
+          if (data.language) setLanguage(data.language);
+          if (data.currency) setCurrency(data.currency);
+        }
+        setLoading(false);
+      });
+  }, [user]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await supabase.from("profiles").update({ country, language, currency }).eq("id", user.id);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const selectStyle = { width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none", marginBottom: 16 };
+  const labelStyle = { fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 };
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🌍 Language & Region</h3>
+      {loading ? <div style={{ textAlign: "center", padding: 30, color: MUTED }}>Loading...</div> : (
+        <>
+          <label style={labelStyle}>YOUR COUNTRY</label>
+          <select value={country} onChange={e => setCountry(e.target.value)} style={selectStyle}>
+            {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name}</option>)}
+          </select>
+          <label style={labelStyle}>LANGUAGE</label>
+          <select value={language} onChange={e => setLanguage(e.target.value)} style={selectStyle}>
+            {["English", "French", "Arabic", "Swahili", "Yoruba", "Igbo", "Hausa", "Portuguese", "Spanish"].map(l => <option key={l}>{l}</option>)}
+          </select>
+          <label style={labelStyle}>CURRENCY</label>
+          <select value={currency} onChange={e => setCurrency(e.target.value)} style={selectStyle}>
+            {["NGN — Nigerian Naira (₦)", "GHS — Ghanaian Cedi", "KES — Kenyan Shilling", "ZAR — South African Rand", "USD — US Dollar ($)", "GBP — British Pound (£)", "EUR — Euro (€)", "CAD — Canadian Dollar", "AED — UAE Dirham"].map(c => <option key={c}>{c}</option>)}
+          </select>
+          {saved && <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: GREEN, marginBottom: 14 }}>✅ Preferences saved!</div>}
+          <GoldBtn onClick={handleSave} disabled={saving} style={{ width: "100%", padding: "13px" }}>
+            {saving ? "Saving..." : "Save Preferences"}
+          </GoldBtn>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── HELP & SUPPORT PAGE ───
+function HelpSupportPage({ onBack }) {
+  const [activeFaq, setActiveFaq] = useState(null);
+  const FAQS = [
+    { q: "How do I book a professional?", a: "Go to Explore, find a professional you like, tap their profile and click 'Book Now'. Choose your date, time and service." },
+    { q: "How do payments work?", a: "Payments are processed securely via Flutterwave. A 20% platform fee applies to all bookings. You can pay by card, bank transfer or USSD." },
+    { q: "How do I become a verified professional?", a: "Go to your profile → Settings → Verification & Boost. A gold verified badge costs ₦2,500/month and increases client trust." },
+    { q: "Can I cancel a booking?", a: "Yes. Go to your Bookings tab, find the booking and tap Cancel. Cancellation policies vary by professional." },
+    { q: "How do I report a user?", a: "On any profile, tap the options menu and select 'Report'. Our team reviews all reports within 24 hours." },
+    { q: "Is STYLEX available in my country?", a: "STYLEX is a global beauty marketplace available in 20+ countries. Use the country filter in Explore to find professionals near you." },
+  ];
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>❓ Help & Support</h3>
+
+      {/* Contact options */}
+      {[
+        { icon: "💬", label: "Contact Support", sub: "Chat with the STYLEX team", action: () => window.open("mailto:support@stylex.app") },
+        { icon: "📧", label: "Email Us", sub: "support@stylex.app", action: () => window.open("mailto:support@stylex.app") },
+        { icon: "🐛", label: "Report a Bug", sub: "Something not working? Let us know", action: () => window.open("mailto:bugs@stylex.app?subject=Bug Report") },
+        { icon: "⭐", label: "Rate STYLEX", sub: "Enjoying the app? Leave a review", action: () => {} },
+      ].map(item => (
+        <button key={item.label} onClick={item.action} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
+          <span style={{ fontSize: 20 }}>{item.icon}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
+          </div>
+          <span style={{ color: MUTED, fontSize: 18 }}>›</span>
+        </button>
+      ))}
+
+      {/* FAQs */}
+      <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, margin: "20px 0 12px" }}>📖 Frequently Asked Questions</div>
+      {FAQS.map((faq, i) => (
+        <div key={i} style={{ background: CARD, border: `1px solid ${activeFaq === i ? GOLD + "55" : BORDER}`, borderRadius: 14, marginBottom: 10, overflow: "hidden" }}>
+          <button onClick={() => setActiveFaq(activeFaq === i ? null : i)} style={{ background: "none", border: "none", width: "100%", padding: "14px 16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", textAlign: "left" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: TEXT, flex: 1, paddingRight: 10 }}>{faq.q}</span>
+            <span style={{ color: GOLD, fontSize: 16, flexShrink: 0 }}>{activeFaq === i ? "▲" : "▼"}</span>
+          </button>
+          {activeFaq === i && (
+            <div style={{ padding: "0 16px 14px", fontSize: 13, color: MUTED, lineHeight: 1.7 }}>{faq.a}</div>
+          )}
+        </div>
+      ))}
+
+      {/* Legal links */}
+      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+        <button style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px", cursor: "pointer", fontSize: 12, color: MUTED, fontWeight: 600 }}>📜 Terms of Service</button>
+        <button style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px", cursor: "pointer", fontSize: 12, color: MUTED, fontWeight: 600 }}>🔐 Privacy Policy</button>
+      </div>
+
+      <div style={{ marginTop: 20, textAlign: "center" }}>
+        <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, color: GOLD, fontFamily: "Georgia, serif" }}>STYLEX</div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Version 1.0.0 · Global Beauty Marketplace</div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PROFILE SCREEN (CLIENT) ───
 function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
   const [activeTab, setActiveTab] = useState("bookings");
@@ -2609,55 +2964,12 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
 
         {/* ── NOTIFICATIONS PAGE ── */}
         {activeTab === "settings" && settingsPage === "notifications" && (
-          <div>
-            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
-            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🔔 Notifications</h3>
-            {[
-              { label: "Booking confirmations", sub: "When a booking is confirmed or cancelled", key: "bookings" },
-              { label: "New messages", sub: "Messages from professionals", key: "messages" },
-              { label: "Promotions & offers", sub: "Deals and special offers from STYLEX", key: "promos" },
-              { label: "New followers", sub: "When someone follows you", key: "followers" },
-              { label: "Post likes & comments", sub: "Activity on your posts", key: "activity" },
-              { label: "App updates", sub: "New features and announcements", key: "updates" },
-            ].map(item => {
-              const [on, setOn] = useState(true);
-              return (
-                <div key={item.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: CARD, borderRadius: 14, padding: "14px 16px", marginBottom: 10, border: `1px solid ${BORDER}` }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
-                    <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
-                  </div>
-                  <button onClick={() => setOn(o => !o)} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: on ? GOLD : BORDER, position: "relative", flexShrink: 0 }}>
-                    <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: on ? 23 : 3, transition: "left 0.2s" }} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+          <NotificationsSettingsPage user={user} onBack={() => setSettingsPage(null)} />
         )}
 
         {/* ── PRIVACY & SECURITY PAGE ── */}
         {activeTab === "settings" && settingsPage === "privacy" && (
-          <div>
-            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
-            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🔒 Privacy & Security</h3>
-            {[
-              { icon: "🔑", label: "Change Password", sub: "Update your account password" },
-              { icon: "👁️", label: "Profile Visibility", sub: "Control who can see your profile" },
-              { icon: "🚫", label: "Blocked Users", sub: "Manage users you've blocked" },
-              { icon: "📱", label: "Two-Factor Authentication", sub: "Add extra security to your account" },
-              { icon: "🗑️", label: "Delete Account", sub: "Permanently delete your STYLEX account", danger: true },
-            ].map(item => (
-              <button key={item.label} style={{ background: item.danger ? `${RED}11` : CARD, border: `1px solid ${item.danger ? RED + "33" : BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
-                <span style={{ fontSize: 20 }}>{item.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: item.danger ? RED : TEXT }}>{item.label}</div>
-                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
-                </div>
-                <span style={{ color: MUTED, fontSize: 18 }}>›</span>
-              </button>
-            ))}
-          </div>
+          <PrivacySettingsPage user={user} onBack={() => setSettingsPage(null)} onDeleteAccount={onLogout} />
         )}
 
         {/* ── PAYMENT METHODS PAGE ── */}
@@ -2685,65 +2997,21 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
                 <span style={{ color: MUTED, fontSize: 18 }}>›</span>
               </button>
             ))}
-            <p style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 8, lineHeight: 1.6 }}>Payments powered by Flutterwave. Your card details are encrypted and secure.</p>
+            <div style={{ background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 12, padding: 14, marginTop: 6 }}>
+              <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginBottom: 4 }}>💡 Coming Soon</div>
+              <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.6 }}>Real payment processing via Flutterwave is being activated. Your card details will be fully encrypted and secure.</div>
+            </div>
           </div>
         )}
 
         {/* ── LANGUAGE & REGION PAGE ── */}
         {activeTab === "settings" && settingsPage === "language" && (
-          <div>
-            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
-            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🌍 Language & Region</h3>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>YOUR COUNTRY</label>
-              <select style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none" }}>
-                {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name}</option>)}
-              </select>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>LANGUAGE</label>
-              <select style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none" }}>
-                {["English", "French", "Arabic", "Swahili", "Yoruba", "Igbo", "Hausa", "Portuguese"].map(l => <option key={l}>{l}</option>)}
-              </select>
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>CURRENCY</label>
-              <select style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none" }}>
-                {["NGN — Nigerian Naira (₦)", "GHS — Ghanaian Cedi", "KES — Kenyan Shilling", "ZAR — South African Rand", "USD — US Dollar ($)", "GBP — British Pound (£)", "EUR — Euro (€)"].map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <GoldBtn style={{ width: "100%", padding: "13px" }}>Save Preferences</GoldBtn>
-          </div>
+          <LanguageSettingsPage user={user} onBack={() => setSettingsPage(null)} />
         )}
 
         {/* ── HELP & SUPPORT PAGE ── */}
         {activeTab === "settings" && settingsPage === "help" && (
-          <div>
-            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
-            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>❓ Help & Support</h3>
-            {[
-              { icon: "💬", label: "Contact Support", sub: "Chat with the STYLEX team" },
-              { icon: "📧", label: "Email Us", sub: "support@stylex.app" },
-              { icon: "📖", label: "FAQs", sub: "Frequently asked questions" },
-              { icon: "🐛", label: "Report a Bug", sub: "Something not working? Let us know" },
-              { icon: "⭐", label: "Rate STYLEX", sub: "Enjoying the app? Leave a review" },
-              { icon: "📜", label: "Terms of Service", sub: "Read our terms" },
-              { icon: "🔐", label: "Privacy Policy", sub: "How we handle your data" },
-            ].map(item => (
-              <button key={item.label} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
-                <span style={{ fontSize: 20 }}>{item.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
-                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
-                </div>
-                <span style={{ color: MUTED, fontSize: 18 }}>›</span>
-              </button>
-            ))}
-            <div style={{ marginTop: 10, textAlign: "center" }}>
-              <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, color: GOLD, fontFamily: "Georgia, serif" }}>STYLEX</div>
-              <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Version 1.0.0 · Global Beauty Marketplace</div>
-            </div>
-          </div>
+          <HelpSupportPage onBack={() => setSettingsPage(null)} />
         )}
       </div>
 
