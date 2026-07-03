@@ -3048,6 +3048,154 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
   );
 }
 
+// ─── REVIEWS TAB ───
+function ReviewsTab({ proDbId, user, proName }) {
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadReviews = () => {
+    setLoading(true);
+    supabase.from("reviews").select("*").eq("pro_id", proDbId).order("created_at", { ascending: false })
+      .then(({ data }) => { setReviews(data || []); setLoading(false); });
+  };
+
+  useEffect(() => { if (proDbId) loadReviews(); }, [proDbId]);
+
+  const avgRating = reviews.length > 0
+    ? (reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length).toFixed(1)
+    : null;
+
+  const handleSubmit = async () => {
+    if (!user) { setError("Please sign in to leave a review."); return; }
+    if (!comment.trim()) { setError("Please write something in your review."); return; }
+    setSubmitting(true);
+    setError("");
+    const { error: insErr } = await supabase.from("reviews").insert({
+      pro_id: proDbId,
+      pro_name: proName,
+      reviewer_id: user.id,
+      reviewer_name: user.name,
+      rating,
+      comment: comment.trim(),
+    });
+    setSubmitting(false);
+    if (insErr) { setError(insErr.message); return; }
+    setSubmitted(true);
+    setComment("");
+    setRating(5);
+    setShowForm(false);
+    loadReviews();
+    setTimeout(() => setSubmitted(false), 3000);
+  };
+
+  const starColor = (n, selected) => n <= selected ? GOLD : BORDER;
+
+  return (
+    <div>
+      {/* Summary bar */}
+      {reviews.length > 0 && (
+        <div style={{ background: CARD, borderRadius: 14, padding: "16px 18px", border: `1px solid ${BORDER}`, marginBottom: 16, display: "flex", alignItems: "center", gap: 18 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 36, fontWeight: 900, color: GOLD }}>{avgRating}</div>
+            <div style={{ fontSize: 18, color: GOLD }}>{"★".repeat(Math.round(parseFloat(avgRating)))}</div>
+            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{reviews.length} review{reviews.length !== 1 ? "s" : ""}</div>
+          </div>
+          <div style={{ flex: 1 }}>
+            {[5, 4, 3, 2, 1].map(star => {
+              const count = reviews.filter(r => r.rating === star).length;
+              const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0;
+              return (
+                <div key={star} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, color: MUTED, width: 8 }}>{star}</span>
+                  <span style={{ color: GOLD, fontSize: 11 }}>★</span>
+                  <div style={{ flex: 1, height: 5, background: DARK3, borderRadius: 3 }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: GOLD, borderRadius: 3 }} />
+                  </div>
+                  <span style={{ fontSize: 11, color: MUTED, width: 16 }}>{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Leave a review button */}
+      {!showForm && user && (
+        <button onClick={() => setShowForm(true)} style={{ width: "100%", background: `${GOLD}15`, border: `1px dashed ${GOLD}55`, borderRadius: 12, color: GOLD, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
+          ⭐ Leave a Review
+        </button>
+      )}
+
+      {submitted && (
+        <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 12, padding: "12px 16px", fontSize: 13, color: GREEN, marginBottom: 14 }}>✅ Review submitted! Thank you.</div>
+      )}
+
+      {/* Review form */}
+      {showForm && (
+        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 18, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 14 }}>⭐ Your Review</div>
+
+          {/* Star picker */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            {[1, 2, 3, 4, 5].map(star => (
+              <button key={star} onClick={() => setRating(star)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 30, color: star <= rating ? GOLD : BORDER, padding: 0 }}>★</button>
+            ))}
+            <span style={{ fontSize: 13, color: MUTED, alignSelf: "center", marginLeft: 4 }}>{["", "Poor", "Fair", "Good", "Great", "Excellent"][rating]}</span>
+          </div>
+
+          {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 9, padding: "9px 12px", fontSize: 13, color: RED, marginBottom: 12 }}>⚠️ {error}</div>}
+
+          <textarea
+            value={comment}
+            onChange={e => setComment(e.target.value)}
+            placeholder={`Share your experience with ${proName}...`}
+            rows={3}
+            style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "11px 12px", color: TEXT, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 12 }}
+          />
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => { setShowForm(false); setError(""); }} style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, color: MUTED, padding: "10px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            <GoldBtn onClick={handleSubmit} disabled={submitting} style={{ flex: 2, padding: "10px" }}>{submitting ? "Posting..." : "Post Review"}</GoldBtn>
+          </div>
+        </div>
+      )}
+
+      {/* Reviews list */}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading reviews...</div>
+      ) : reviews.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>⭐</div>
+          <p style={{ color: MUTED, fontSize: 13 }}>No reviews yet — be the first!</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {reviews.map((r, i) => (
+            <div key={i} style={{ background: CARD, borderRadius: 14, padding: "14px 16px", border: `1px solid ${BORDER}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Avatar initials={(r.reviewer_name || "U").slice(0, 2).toUpperCase()} size={36} color={GOLD} />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>{r.reviewer_name || "Anonymous"}</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ""}</div>
+                  </div>
+                </div>
+                <div style={{ color: GOLD, fontSize: 14 }}>{"★".repeat(r.rating || 5)}<span style={{ color: BORDER }}>{"★".repeat(5 - (r.rating || 5))}</span></div>
+              </div>
+              <p style={{ fontSize: 13, color: `${TEXT}cc`, lineHeight: 1.6, margin: 0 }}>{r.comment}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── PRO PROFILE SCREEN ───
 function ProProfileScreen({ pro, user, onBack, onBook }) {
   const [activeTab, setActiveTab] = useState("posts");
@@ -3318,10 +3466,7 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
 
         {/* Reviews */}
         {!loadingTab && activeTab === "reviews" && (
-          <div style={{ textAlign: "center", padding: 40 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>⭐</div>
-            <p style={{ color: MUTED, fontSize: 13 }}>Reviews coming soon</p>
-          </div>
+          <ReviewsTab proDbId={proDbId} user={user} proName={myName || pro.name} />
         )}
 
         {/* Settings (owner only) */}
@@ -3724,8 +3869,8 @@ function StylexApp() {
             style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}
           >
             {item.id === "scanner" ? (
-              <div style={{ width: 44, height: 44, borderRadius: 14, background: DARK3, border: `1.5px solid ${GOLD}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, marginTop: -16, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }}>
-                <span style={{ color: GOLD, fontSize: 16, fontWeight: 900, fontFamily: "Georgia, serif", letterSpacing: -1 }}>AI</span>
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: DARK3, border: `1.5px solid ${GOLD}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, marginTop: -16, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }}>
+                🤖
               </div>
             ) : (
               <span style={{ fontSize: 22, opacity: activeTab === item.id ? 1 : 0.45 }}>{item.icon}</span>
