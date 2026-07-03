@@ -51,7 +51,14 @@ function formatNum(n) {
   return n;
 }
 
-function Avatar({ initials, size = 40, color = GOLD, style = {} }) {
+function Avatar({ initials, size = 40, color = GOLD, style = {}, img = null }) {
+  if (img) {
+    return (
+      <div style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", border: `1.5px solid ${color}55`, flexShrink: 0, ...style }}>
+        <img src={img} alt={initials} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      </div>
+    );
+  }
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", background: `${color}22`, border: `1.5px solid ${color}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.32, fontWeight: 700, color, letterSpacing: 1, flexShrink: 0, ...style }}>{initials}</div>
   );
@@ -76,9 +83,6 @@ function Modal({ onClose, children }) {
 }
 
 // ─── VERIFIED BADGE (shared component) ───
-// Shows a gold verified checkmark next to a pro's name once they've
-// subscribed to verification (is_verified = true in their profile).
-// Two styles: "tick" (small inline ✓ circle) and "pill" (✓ VERIFIED label).
 function VerifiedBadge({ verified, variant = "tick", size = 15 }) {
   if (!verified) return null;
   if (variant === "pill") {
@@ -89,7 +93,6 @@ function VerifiedBadge({ verified, variant = "tick", size = 15 }) {
       </span>
     );
   }
-  // default: filled gold circle tick
   return (
     <span title="Verified professional" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: "#0A0A0B", fontSize: size * 0.6, fontWeight: 900, flexShrink: 0 }}>✓</span>
   );
@@ -414,13 +417,9 @@ function AuthScreen({ onAuthenticated }) {
 }
 
 // ─── SUBSCRIPTION MODAL (Verification + Boost) ───
-// Feature 2: pros subscribe for a verification badge and/or boost.
-// NOTE: actual recurring billing requires Flutterwave/Paystack to be connected.
-// This saves the chosen plan to Supabase so the badge/boost display works;
-// the payment button is wired to a placeholder ready for Flutterwave.
 function SubscriptionModal({ user, onClose, onUpdated }) {
-  const [planType, setPlanType] = useState("verification"); // verification | boost
-  const [billing, setBilling] = useState("monthly"); // monthly | annually
+  const [planType, setPlanType] = useState("verification");
+  const [billing, setBilling] = useState("monthly");
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -433,7 +432,6 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
 
   const handleSubscribe = async () => {
     setSaving(true);
-    // Calculate expiry date
     const now = new Date();
     const expires = new Date(now);
     if (billing === "monthly") expires.setMonth(expires.getMonth() + 1);
@@ -450,7 +448,6 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
       updates.boost_expires = expires.toISOString();
     }
 
-    // TODO: When Flutterwave is connected, trigger payment here BEFORE saving.
     const { error } = await supabase.from("profiles").update(updates).eq("id", user.id);
     setSaving(false);
     if (!error) {
@@ -488,7 +485,6 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
         <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
       </div>
 
-      {/* Plan type selector */}
       <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
         <button onClick={() => setPlanType("verification")} style={{ flex: 1, padding: "14px 10px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: planType === "verification" ? `${GOLD}15` : DARK3, border: `1.5px solid ${planType === "verification" ? GOLD : BORDER}` }}>
           <div style={{ fontSize: 22, marginBottom: 4 }}>✅</div>
@@ -502,7 +498,6 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
         </button>
       </div>
 
-      {/* What you get */}
       <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${BORDER}` }}>
         <div style={{ fontSize: 12, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>WHAT YOU GET</div>
         {(planType === "verification"
@@ -516,7 +511,6 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
         ))}
       </div>
 
-      {/* Billing toggle */}
       <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
         <button onClick={() => setBilling("monthly")} style={{ flex: 1, padding: "14px", borderRadius: 12, cursor: "pointer", background: billing === "monthly" ? `${GOLD}15` : DARK3, border: `1.5px solid ${billing === "monthly" ? GOLD : BORDER}` }}>
           <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Monthly</div>
@@ -540,7 +534,6 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
 }
 
 // ─── PRO DASHBOARD ───
-// Where a logged-in professional sets up their business profile & pricing.
 function ProDashboard({ user, onClose, onOpenSubscription }) {
   const CATEGORIES = ["Hairstylist", "Barber", "Makeup Artist", "Nail Technician", "Lash Tech", "Skincare"];
 
@@ -561,7 +554,6 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
   const [isVerified, setIsVerified] = useState(false);
   const [isBoosted, setIsBoosted] = useState(false);
 
-  // Load existing profile data when the dashboard opens
   useEffect(() => {
     const loadProfile = async () => {
       if (!user) { setLoading(false); return; }
@@ -633,7 +625,6 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
         <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
       </div>
 
-      {/* Verification + Boost status / upsell */}
       <div style={{ background: `linear-gradient(135deg, ${GOLD}22, ${DARK3})`, borderRadius: 12, padding: 16, marginBottom: 18, border: `1px solid ${GOLD}33` }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -881,10 +872,7 @@ function BookingModal({ pro, onClose, user }) {
   );
 }
 
-// ─── STYLE IMAGE (real photo of a recommended style, with safe fallback) ───
-// Fetches a real photo for a style name via /api/styleimage (Unsplash API).
-// If no photo is found or the request fails, shows a clean styled placeholder
-// so it can never crash the app or leave an empty broken box.
+// ─── STYLE IMAGE ───
 function StyleImage({ style, scanType }) {
   const [imgUrl, setImgUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -926,10 +914,8 @@ function StyleImage({ style, scanType }) {
 }
 
 // ─── AI SCANNER (REAL CAMERA + CLAUDE VISION) ───
-// Feature 1: opens the real camera, captures a photo, sends it to /api/scan
-// (a serverless function that calls Claude's vision API) for real analysis.
 function AIScannerModal({ onClose, realPros = [], onBookPro }) {
-  const [step, setStep] = useState("choose"); // choose | camera | analyzing | results | error
+  const [step, setStep] = useState("choose");
   const [scanType, setScanType] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
   const [result, setResult] = useState(null);
@@ -946,7 +932,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
     { id: "skin", icon: "✨", label: "Skin Tone", desc: "Find your perfect look" },
   ];
 
-  // Which pro categories match each scan type — used to recommend a pro
   const scanToCategories = {
     face: ["Makeup Artist", "Skincare"],
     hair: ["Hairstylist", "Barber"],
@@ -954,14 +939,12 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
     skin: ["Skincare", "Makeup Artist"],
   };
 
-  // Combine real pros (first) + demo pros, then match to the scan type
   const allPros = [...realPros, ...professionals];
   const matchedPros = allPros.filter(p => {
     const cats = scanToCategories[scanType] || [];
     return cats.some(c => (p.category || "").toLowerCase().includes(c.toLowerCase().split(" ")[0]));
   }).slice(0, 3);
 
-  // Stop the camera stream
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -969,7 +952,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
     }
   };
 
-  // Clean up camera when modal closes
   useEffect(() => {
     return () => stopCamera();
   }, []);
@@ -984,7 +966,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
         audio: false
       });
       streamRef.current = stream;
-      // Wait a tick for the video element to mount
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -1017,7 +998,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
     setStep("analyzing");
     setErrorMsg("");
     try {
-      // strip the "data:image/jpeg;base64," prefix
       const base64 = dataUrl.split(",")[1];
       const response = await fetch("/api/scan", {
         method: "POST",
@@ -1033,10 +1013,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
       setResult(data);
       setStep("results");
 
-      // Fetch real pro work matching this scan's categories.
-      // We pull recent photos and filter them in JS with a fuzzy, case-insensitive
-      // match (same approach as matchedPros) so small casing/spacing differences
-      // in the saved category don't hide real work.
       const cats = scanToCategories[scanType] || [];
       if (cats.length > 0) {
         const { data: work } = await supabase
@@ -1045,7 +1021,7 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
           .order("created_at", { ascending: false })
           .limit(50);
         if (work) {
-          const catKeys = cats.map(c => c.toLowerCase().split(" ")[0]); // e.g. "hairstylist","barber"
+          const catKeys = cats.map(c => c.toLowerCase().split(" ")[0]);
           const filtered = work.filter(w => {
             const wc = (w.category || "").toLowerCase();
             return catKeys.some(k => wc.includes(k));
@@ -1081,7 +1057,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
         <button onClick={handleClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
       </div>
 
-      {/* Hidden canvas for capture */}
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
       {step === "choose" && (
@@ -1132,7 +1107,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
             <div style={{ fontSize: 13, color: `${TEXT}99`, lineHeight: 1.6 }}>{result.description}</div>
           </div>
 
-          {/* Real work by STYLEX pros matching this scan — book them directly */}
           {portfolioWork.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>💎 REAL WORK BY STYLEX PROS</div>
@@ -1160,7 +1134,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
           {result.styles && result.styles.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>RECOMMENDED STYLES</div>
-              {/* Generic style examples (via /api/styleimage) */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
                 {result.styles.slice(0, 4).map(style => (
                   <StyleImage key={style} style={style} scanType={scanType} />
@@ -1178,14 +1151,13 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
             </div>
           )}
 
-          {/* Recommend a professional who can do this look */}
           {matchedPros.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>✨ PROS WHO CAN DO THIS FOR YOU</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {matchedPros.map(pro => (
                   <div key={pro.id} style={{ display: "flex", alignItems: "center", gap: 12, background: DARK3, borderRadius: 12, padding: "10px 12px", border: `1px solid ${BORDER}` }}>
-                    <Avatar initials={pro.avatar} size={42} color={pro.color} />
+                    <Avatar initials={pro.avatar} size={42} color={pro.color} img={pro.avatarUrl} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         <span style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>{pro.name}</span>
@@ -1220,7 +1192,6 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
 }
 
 // ─── PRODUCT UPLOAD MODAL ───
-// Feature 3a: both pros and clients can list products. 5% commission applies.
 function ProductUploadModal({ user, onClose, onUploaded }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -1340,8 +1311,6 @@ function ProductUploadModal({ user, onClose, onUploaded }) {
 }
 
 // ─── COLLABORATION / ADVERTISE MODAL ───
-// Feature 3c: companies reach the owner for collab/promo/ads.
-// Messages save to Supabase `collab_requests` -> visible in admin dashboard.
 function CollabModal({ user, onClose }) {
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState(user?.email || "");
@@ -1429,7 +1398,6 @@ function CollabModal({ user, onClose }) {
 }
 
 // ─── MARKETPLACE SCREEN ───
-// Feature 3: browse products, upload products, and reach out for partnerships.
 function MarketplaceScreen({ user, onLogin }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1455,14 +1423,12 @@ function MarketplaceScreen({ user, onLogin }) {
         <button onClick={() => setShowCollab(true)} title="Partner with us" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 10, color: GOLD, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🤝 Partner</button>
       </div>
 
-      {/* Upload + Partner banner */}
       <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
         <button onClick={() => user ? setShowUpload(true) : onLogin()} style={{ flex: 1, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 12, color: "#000", padding: "14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
           ➕ Sell a Product
         </button>
       </div>
 
-      {/* Category filter */}
       {cats.length > 1 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 18, overflowX: "auto", scrollbarWidth: "none" }}>
           {cats.map(cat => (
@@ -1504,20 +1470,18 @@ function MarketplaceScreen({ user, onLogin }) {
 }
 
 // ─── CREATE POST MODAL ───
-// Pros create a feed post. Deploy 1: photo uploads. (Video added in Deploy 2.)
-// Saves the file to the "posts" storage bucket and a row in the "posts" table.
 function CreatePostModal({ user, onClose, onPosted }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [mediaKind, setMediaKind] = useState("photo"); // photo | video
+  const [mediaKind, setMediaKind] = useState("photo");
   const [caption, setCaption] = useState("");
   const [category, setCategory] = useState("");
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState("choose"); // choose | recording | preview
+  const [mode, setMode] = useState("choose");
   const [recording, setRecording] = useState(false);
-  const [recordType, setRecordType] = useState("video"); // what the camera will capture
+  const [recordType, setRecordType] = useState("video");
 
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
@@ -1528,17 +1492,15 @@ function CreatePostModal({ user, onClose, onPosted }) {
   const chunksRef = useRef([]);
 
   const CATEGORIES = ["Hair", "Makeup", "Barbing", "Nails", "Lashes", "Facial"];
-  const MAX_PHOTO = 5 * 1024 * 1024;   // 5MB
-  const MAX_VIDEO = 20 * 1024 * 1024;  // 20MB (~30s phone video)
+  const MAX_PHOTO = 5 * 1024 * 1024;
+  const MAX_VIDEO = 20 * 1024 * 1024;
 
-  // Pre-fill the pro's category
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("category").eq("id", user.id).maybeSingle()
       .then(({ data }) => { if (data && data.category) setCategory(data.category); });
   }, [user]);
 
-  // Clean up the camera if the modal closes mid-recording
   useEffect(() => {
     return () => stopStream();
   }, []);
@@ -1550,7 +1512,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
     }
   };
 
-  // ── Pick a file from the phone/computer ──
   const handleFileChange = (e, kind) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
@@ -1568,7 +1529,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
     setMode("preview");
   };
 
-  // ── In-app camera ──
   const startCamera = async (type) => {
     setError("");
     setRecordType(type);
@@ -1592,7 +1552,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
     }
   };
 
-  // snap a photo from the live camera
   const snapPhoto = () => {
     const video = camVideoRef.current;
     const canvas = canvasRef.current;
@@ -1611,7 +1570,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
     }, "image/jpeg", 0.85);
   };
 
-  // start/stop video recording
   const startRecording = () => {
     if (!streamRef.current) return;
     chunksRef.current = [];
@@ -1639,7 +1597,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
     };
     recorder.start();
     setRecording(true);
-    // auto-stop at 30s to protect storage
     setTimeout(() => { if (recorderRef.current && recorderRef.current.state === "recording") stopRecording(); }, 30000);
   };
   const stopRecording = () => {
@@ -1716,12 +1673,10 @@ function CreatePostModal({ user, onClose, onPosted }) {
 
       {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
 
-      {/* Hidden inputs + canvas */}
       <input ref={photoInputRef} type="file" accept="image/*" onChange={(e) => handleFileChange(e, "photo")} style={{ display: "none" }} />
       <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => handleFileChange(e, "video")} style={{ display: "none" }} />
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
-      {/* CHOOSE MODE */}
       {mode === "choose" && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
@@ -1749,7 +1704,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
         </div>
       )}
 
-      {/* RECORDING MODE */}
       {mode === "recording" && (
         <div style={{ marginBottom: 16, textAlign: "center" }}>
           <div style={{ borderRadius: 14, overflow: "hidden", border: `2px solid ${GOLD}44`, marginBottom: 12, background: "#000" }}>
@@ -1774,7 +1728,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
         </div>
       )}
 
-      {/* PREVIEW MODE */}
       {mode === "preview" && preview && (
         <div style={{ marginBottom: 16, borderRadius: 14, overflow: "hidden", border: `1px solid ${BORDER}`, position: "relative" }}>
           {mediaKind === "video" ? (
@@ -1786,7 +1739,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
         </div>
       )}
 
-      {/* Caption + category + post (shown once media is chosen, or always for caption) */}
       {mode === "preview" && (
         <>
           <label style={labelStyle}>Caption</label>
@@ -1808,8 +1760,6 @@ function CreatePostModal({ user, onClose, onPosted }) {
 }
 
 // ─── COMMENTS MODAL ───
-// Real comments on a post, saved to the "comments" table. Anyone signed in
-// can comment; the post's comment count updates live.
 function CommentsModal({ post, user, onClose, onCountChange }) {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1835,7 +1785,6 @@ function CommentsModal({ post, user, onClose, onCountChange }) {
     });
     if (!error) {
       const newCount = (comments.length + 1);
-      // keep the post's comment count in sync
       await supabase.from("posts").update({ comments: newCount }).eq("id", post.id);
       if (onCountChange) onCountChange(newCount);
       setText("");
@@ -1904,18 +1853,15 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
   };
   useEffect(() => { loadPosts(); }, []);
 
-  // Find the matching pro object for a post (so Book/profile work)
   const findPro = (post) => {
     const all = [...realPros, ...professionals];
     return all.find(p => p.id === "db-" + post.pro_id || p.name === post.pro_name);
   };
 
-  // Real posts, filtered by category
   const realFiltered = activeCategory === "All"
     ? posts
     : posts.filter(p => (p.category || "").toLowerCase().includes(activeCategory.toLowerCase()));
 
-  // Show fake demo posts only when there are no real posts yet (so a new app isn't empty)
   const demoFiltered = activeCategory === "All" ? feedVideos : feedVideos.filter(f => f.pro.category.toLowerCase().includes(activeCategory.toLowerCase()));
   const showDemo = posts.length === 0;
 
@@ -1924,7 +1870,6 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
   const toggleLike = async (post) => {
     const isLiked = liked[post.id];
     setLiked(p => ({ ...p, [post.id]: !isLiked }));
-    // persist like count on the post
     const newCount = (post.likes || 0) + (isLiked ? -1 : 1);
     await supabase.from("posts").update({ likes: newCount }).eq("id", post.id);
     setPosts(ps => ps.map(p => p.id === post.id ? { ...p, likes: newCount } : p));
@@ -1953,7 +1898,6 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
       <div style={{ padding: "0 20px 100px" }}>
         {loadingPosts && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading feed...</div>}
 
-        {/* REAL POSTS */}
         {realFiltered.map((post) => {
           const pro = findPro(post);
           return (
@@ -1992,7 +1936,6 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
           );
         })}
 
-        {/* DEMO POSTS (only when no real posts exist yet) */}
         {showDemo && demoFiltered.map((item) => (
           <div key={"demo-" + item.id} style={{ borderRadius: 20, overflow: "hidden", marginBottom: 20, border: `1px solid ${BORDER}` }}>
             <div style={{ background: item.gradient, height: 260, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={() => onProfile(item.pro)}>
@@ -2047,7 +1990,6 @@ function ExploreScreen({ onProfile, user, realPros = [] }) {
   const [selectedCat, setSelectedCat] = useState("All");
   const [bookModal, setBookModal] = useState(null);
 
-  // Real pros (from Supabase) shown first, then demo pros
   const allPros = [...realPros, ...professionals];
   const filtered = allPros.filter(p => {
     const matchCat = selectedCat === "All" || p.category.toLowerCase().includes(selectedCat.toLowerCase());
@@ -2073,7 +2015,7 @@ function ExploreScreen({ onProfile, user, realPros = [] }) {
             <div style={{ height: 4, background: `linear-gradient(90deg, ${pro.color}, ${pro.color}44)` }} />
             <div style={{ padding: "18px 18px 14px" }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 12 }}>
-                <Avatar initials={pro.avatar} size={52} color={pro.color} />
+                <Avatar initials={pro.avatar} size={52} color={pro.color} img={pro.avatarUrl} />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                     <span style={{ fontWeight: 800, fontSize: 15, color: TEXT }}>{pro.name}</span>
@@ -2114,7 +2056,8 @@ function ExploreScreen({ onProfile, user, realPros = [] }) {
   );
 }
 
-// ─── BOOKINGS SCREEN ───
+// ─── BOOKINGS SCREEN (kept for reference) ───
+// eslint-disable-next-line no-unused-vars
 function BookingsScreen({ user, onLogin }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2172,10 +2115,6 @@ function BookingsScreen({ user, onLogin }) {
 }
 
 // ─── PORTFOLIO UPLOAD MODAL ───
-// Lets a professional upload a real photo of their work. The file goes to
-// Supabase Storage (bucket "portfolio"), and a record is saved in the
-// `portfolio` table tagged with the pro + a style category, so the AI scanner
-// can later show this real work to clients and let them book this pro.
 function PortfolioUploadModal({ user, onClose }) {
   const CATEGORIES = ["Hairstylist", "Barber", "Makeup Artist", "Nail Technician", "Lash Tech", "Skincare"];
 
@@ -2188,7 +2127,6 @@ function PortfolioUploadModal({ user, onClose }) {
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
 
-  // Preload the pro's own category so it's pre-filled
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("category").eq("id", user.id).maybeSingle()
@@ -2213,17 +2151,14 @@ function PortfolioUploadModal({ user, onClose }) {
 
     setUploading(true);
     try {
-      // 1) upload the file to Supabase Storage
       const ext = file.name.split(".").pop();
       const filePath = `${user.id}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("portfolio").upload(filePath, file);
       if (upErr) { setError("Upload failed: " + upErr.message); setUploading(false); return; }
 
-      // 2) get the public URL for the uploaded file
       const { data: urlData } = supabase.storage.from("portfolio").getPublicUrl(filePath);
       const imageUrl = urlData.publicUrl;
 
-      // 3) save a record in the portfolio table
       const { error: insErr } = await supabase.from("portfolio").insert({
         pro_id: user.id,
         pro_name: user.name,
@@ -2269,7 +2204,6 @@ function PortfolioUploadModal({ user, onClose }) {
 
       {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
 
-      {/* Photo picker / preview */}
       <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
       <div onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ borderRadius: 14, border: `2px dashed ${preview ? GOLD : BORDER}`, background: DARK3, cursor: "pointer", marginBottom: 16, overflow: "hidden", minHeight: 180, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {preview ? (
@@ -2302,565 +2236,1117 @@ function PortfolioUploadModal({ user, onClose }) {
   );
 }
 
-// ─── PROFILE SCREEN ───
-function ProfileScreen({ user, onAuth, onLogout, onOpenDashboard, onOpenMarketplace, onOpenSubscription, realPros = [], onBookPro, refreshKey = 0 }) {
-  const [showScanner, setShowScanner] = useState(false);
-  const [showUpload, setShowUpload] = useState(false);
-  const [showProductUpload, setShowProductUpload] = useState(false);
-  const [showCollab, setShowCollab] = useState(false);
-  const [myVerified, setMyVerified] = useState(false);
-  const [myBoosted, setMyBoosted] = useState(false);
-  const [followingPros, setFollowingPros] = useState([]);
+// ─── EDIT PROFILE MODAL ───
+// Lets any user (client or pro) edit their profile picture, name, username,
+// bio, city and phone. The avatar photo goes to the "avatars" storage bucket;
+// the details save to the profiles table (username & avatar_url columns).
+function EditProfileModal({ user, onClose, onSaved }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
 
-  // Load this user's own verified/boost status so we can show their badge
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [bio, setBio] = useState("");
+  const [location, setLocation] = useState("");
+  const [phone, setPhone] = useState("");
+
+  const [avatarUrl, setAvatarUrl] = useState("");   // current saved photo
+  const [file, setFile] = useState(null);           // newly chosen photo
+  const [preview, setPreview] = useState(null);      // local preview of new photo
+  const fileInputRef = useRef(null);
+
+  // Load current profile values
   useEffect(() => {
-    if (!user) return;
-    supabase.from("profiles").select("is_verified, is_boosted").eq("id", user.id).maybeSingle()
+    if (!user) { setLoading(false); return; }
+    supabase.from("profiles").select("full_name, username, bio, location, phone, avatar_url").eq("id", user.id).maybeSingle()
       .then(({ data }) => {
         if (data) {
-          setMyVerified(data.is_verified === true);
-          setMyBoosted(data.is_boosted === true);
+          setFullName(data.full_name || "");
+          setUsername(data.username || "");
+          setBio(data.bio || "");
+          setLocation(data.location || "");
+          setPhone(data.phone || "");
+          setAvatarUrl(data.avatar_url || "");
         }
+        setLoading(false);
       });
   }, [user]);
 
-  // Load the pros this user is following (for clients).
-  // Re-runs when refreshKey changes (e.g. after visiting a pro's page and following).
+  const handleFileChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { setError("Please choose an image file."); return; }
+    if (f.size > 5 * 1024 * 1024) { setError("Image is too large. Please use one under 5MB."); return; }
+    setError("");
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  };
+
+  const handleSave = async () => {
+    setError("");
+    if (!fullName.trim()) { setError("Please enter your name."); return; }
+    setSaving(true);
+    try {
+      let newAvatarUrl = avatarUrl;
+
+      // 1) if a new photo was chosen, upload it to the avatars bucket
+      if (file) {
+        const ext = file.name.split(".").pop();
+        const filePath = `${user.id}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("avatars").upload(filePath, file);
+        if (upErr) { setError("Photo upload failed: " + upErr.message); setSaving(false); return; }
+        const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+        newAvatarUrl = urlData.publicUrl;
+      }
+
+      // 2) save the details to the profiles table
+      const updates = {
+        full_name: fullName.trim(),
+        username: username.trim(),
+        bio: bio.trim(),
+        location: location.trim(),
+        phone: phone.trim(),
+        avatar_url: newAvatarUrl
+      };
+      const { error: updErr } = await supabase.from("profiles").update(updates).eq("id", user.id);
+      if (updErr) { setError("Couldn't save: " + updErr.message); setSaving(false); return; }
+
+      setSaving(false);
+      setDone(true);
+      if (onSaved) onSaved({ name: updates.full_name, username: updates.username, avatarUrl: newAvatarUrl, bio: updates.bio, location: updates.location });
+      setTimeout(() => { setDone(false); onClose(); }, 1400);
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+      setSaving(false);
+    }
+  };
+
+  const labelStyle = { fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
+  const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 16, boxSizing: "border-box" };
+
+  if (done) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <div style={{ fontSize: 56, marginBottom: 14 }}>✅</div>
+          <h3 style={{ color: GOLD, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Profile Updated!</h3>
+          <p style={{ color: MUTED, fontSize: 13 }}>Your changes are now live.</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0", color: MUTED }}>Loading your profile...</div>
+      </Modal>
+    );
+  }
+
+  const shownPhoto = preview || avatarUrl || null;
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Edit Profile</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Update your photo & details</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
+
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
+        <div onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ cursor: "pointer", position: "relative" }}>
+          {shownPhoto ? (
+            <div style={{ width: 96, height: 96, borderRadius: "50%", overflow: "hidden", border: `2px solid ${GOLD}` }}>
+              <img src={shownPhoto} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            </div>
+          ) : (
+            <div style={{ width: 96, height: 96, borderRadius: "50%", background: `${GOLD}22`, border: `2px solid ${GOLD}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 700, color: GOLD }}>
+              {(fullName || user.name || "U").slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <div style={{ position: "absolute", bottom: 0, right: 0, width: 30, height: 30, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, border: `2px solid ${DARK2}` }}>📷</div>
+        </div>
+        <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ background: "none", border: "none", color: GOLD, fontSize: 12, fontWeight: 600, cursor: "pointer", marginTop: 10 }}>Change photo</button>
+      </div>
+
+      <label style={labelStyle}>Name</label>
+      <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your full name" style={inputStyle} />
+
+      <label style={labelStyle}>Username</label>
+      <div style={{ position: "relative", marginBottom: 16 }}>
+        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 14 }}>@</span>
+        <input value={username} onChange={(e) => setUsername(e.target.value.replace(/\s+/g, "").toLowerCase())} placeholder="username" style={{ ...inputStyle, marginBottom: 0, paddingLeft: 26 }} />
+      </div>
+
+      <label style={labelStyle}>Bio</label>
+      <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Tell people a bit about you..." rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+      <label style={labelStyle}>City</label>
+      <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Lagos, Abuja..." style={inputStyle} />
+
+      <label style={labelStyle}>Phone</label>
+      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 0801 234 5678" style={inputStyle} />
+
+      <GoldBtn onClick={handleSave} disabled={saving} style={{ width: "100%", padding: "13px" }}>
+        {saving ? "Saving..." : "Save Changes"}
+      </GoldBtn>
+    </Modal>
+  );
+}
+
+// ─── COUNTRY LIST ───
+const COUNTRIES = [
+  { code: "NG", flag: "🇳🇬", name: "Nigeria" },
+  { code: "GH", flag: "🇬🇭", name: "Ghana" },
+  { code: "KE", flag: "🇰🇪", name: "Kenya" },
+  { code: "ZA", flag: "🇿🇦", name: "South Africa" },
+  { code: "EG", flag: "🇪🇬", name: "Egypt" },
+  { code: "ET", flag: "🇪🇹", name: "Ethiopia" },
+  { code: "TZ", flag: "🇹🇿", name: "Tanzania" },
+  { code: "UG", flag: "🇺🇬", name: "Uganda" },
+  { code: "SN", flag: "🇸🇳", name: "Senegal" },
+  { code: "CI", flag: "🇨🇮", name: "Côte d'Ivoire" },
+  { code: "CM", flag: "🇨🇲", name: "Cameroon" },
+  { code: "GB", flag: "🇬🇧", name: "United Kingdom" },
+  { code: "US", flag: "🇺🇸", name: "United States" },
+  { code: "CA", flag: "🇨🇦", name: "Canada" },
+  { code: "FR", flag: "🇫🇷", name: "France" },
+  { code: "DE", flag: "🇩🇪", name: "Germany" },
+  { code: "AE", flag: "🇦🇪", name: "UAE" },
+  { code: "BR", flag: "🇧🇷", name: "Brazil" },
+  { code: "IN", flag: "🇮🇳", name: "India" },
+  { code: "AU", flag: "🇦🇺", name: "Australia" },
+];
+
+// ─── PROFILE SCREEN (CLIENT) ───
+function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
+  const [activeTab, setActiveTab] = useState("bookings");
+  const [showEdit, setShowEdit] = useState(false);
+  const [myAvatar, setMyAvatar] = useState("");
+  const [myUsername, setMyUsername] = useState("");
+  const [myName, setMyName] = useState(user?.name || "");
+  const [isVerified, setIsVerified] = useState(false);
+  const [isBoosted, setIsBoosted] = useState(false);
+  const [bookings, setBookings] = useState([]);
+  const [following, setFollowing] = useState([]);
+  // eslint-disable-next-line no-unused-vars
+  const [savedPosts, setSavedPosts] = useState([]);
+  const [loadingTab, setLoadingTab] = useState(false);
+
+  // Load profile info
   useEffect(() => {
     if (!user) return;
-    supabase.from("follows").select("pro_id").eq("follower_id", user.id)
-      .then(async ({ data }) => {
-        if (!data || data.length === 0) { setFollowingPros([]); return; }
-        const ids = data.map(f => f.pro_id);
-        const { data: pros } = await supabase.from("profiles").select("id, full_name, category, location").in("id", ids);
-        setFollowingPros(pros || []);
+    supabase.from("profiles")
+      .select("full_name, username, avatar_url, is_verified, is_boosted")
+      .eq("id", user.id).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setMyName(data.full_name || user.name || "");
+          setMyUsername(data.username || "");
+          setMyAvatar(data.avatar_url || "");
+          setIsVerified(data.is_verified === true);
+          setIsBoosted(data.is_boosted === true);
+        }
       });
   }, [user, refreshKey]);
 
-  if (!user) return <AuthScreen onAuthenticated={onAuth} />;
+  // Load tab data
+  useEffect(() => {
+    if (!user) return;
+    setLoadingTab(true);
+    if (activeTab === "bookings") {
+      supabase.from("bookings").select("*").eq("client_id", user.id).order("created_at", { ascending: false })
+        .then(({ data }) => { setBookings(data || []); setLoadingTab(false); });
+    } else if (activeTab === "following") {
+      supabase.from("follows").select("following_id, following_name, following_avatar").eq("follower_id", user.id)
+        .then(({ data }) => { setFollowing(data || []); setLoadingTab(false); });
+    } else {
+      setLoadingTab(false);
+    }
+  }, [user, activeTab, refreshKey]);
 
-  const isPro = user.type === "professional";
+  const tabs = [
+    { id: "bookings", icon: "📅", label: "Bookings" },
+    { id: "saved", icon: "🔖", label: "Saved" },
+    { id: "following", icon: "👥", label: "Following" },
+    { id: "settings", icon: "⚙️", label: "Settings" },
+  ];
+
+  const initials = (myName || user?.name || "U").slice(0, 2).toUpperCase();
 
   return (
-    <div style={{ minHeight: "100vh", background: DARK, fontFamily: "'Helvetica Neue', Arial, sans-serif", paddingBottom: 100 }}>
-      <div style={{ background: isPro ? `linear-gradient(135deg, ${GOLD}22, ${DARK3})` : `linear-gradient(135deg, #1a1a2e, ${DARK3})`, borderBottom: `1px solid ${BORDER}`, padding: "20px 20px 16px" }}>
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 16 }}>
-          <Avatar initials={user.name.slice(0, 2).toUpperCase()} size={72} color={GOLD} />
+    <div style={{ minHeight: "100vh", background: DARK, paddingBottom: 100 }}>
+      {/* ── Header ── */}
+      <div style={{ background: `linear-gradient(180deg, ${DARK2} 0%, ${DARK} 100%)`, padding: "28px 20px 0" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 16 }}>
+          <Avatar initials={initials} size={80} color={GOLD} img={myAvatar} />
           <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-              <div style={{ fontWeight: 800, fontSize: 18, color: TEXT }}>{user.name}</div>
-              <VerifiedBadge verified={myVerified} size={16} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontWeight: 800, fontSize: 18, color: TEXT }}>{myName || user?.name}</span>
+              <VerifiedBadge verified={isVerified} size={16} />
+              {isBoosted && <span style={{ fontSize: 11, color: GREEN }}>🚀</span>}
             </div>
-            <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>{user.email}</div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 6, padding: "3px 10px", fontSize: 10, color: GOLD, fontWeight: 700 }}>
-                {isPro ? "✂️ PROFESSIONAL" : "👤 CLIENT"}
-              </span>
-              {myBoosted && <span style={{ background: `${GREEN}22`, border: `1px solid ${GREEN}55`, borderRadius: 6, padding: "3px 10px", fontSize: 10, color: GREEN, fontWeight: 700 }}>🚀 BOOSTED</span>}
+            {myUsername && (
+              <div style={{ fontSize: 13, color: GOLD, fontWeight: 600, marginBottom: 6 }}>@{myUsername}</div>
+            )}
+            <div style={{ fontSize: 12, color: MUTED }}>{user?.email}</div>
+            <div style={{ marginTop: 8 }}>
+              <span style={{ fontSize: 11, background: `${GOLD}15`, color: GOLD, border: `1px solid ${GOLD}33`, borderRadius: 20, padding: "3px 10px", fontWeight: 700 }}>CLIENT</span>
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 0, background: CARD, borderRadius: 12, overflow: "hidden", border: `1px solid ${BORDER}`, marginBottom: 14 }}>
-          {[{ label: "Bookings", val: "0" }, { label: isPro ? "Earnings" : "Following", val: isPro ? "₦0" : "0" }, { label: "Reviews", val: "0" }].map((s, i) => (
-            <div key={s.label} style={{ flex: 1, textAlign: "center", padding: "12px 0", borderRight: i < 2 ? `1px solid ${BORDER}` : "none" }}>
-              <div style={{ fontWeight: 800, fontSize: 18, color: GOLD }}>{s.val}</div>
-              <div style={{ fontSize: 11, color: MUTED }}>{s.label}</div>
-            </div>
+        {/* Edit Profile button */}
+        <button onClick={() => setShowEdit(true)} style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, color: TEXT, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          ✏️ Edit Profile
+        </button>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", borderBottom: `1px solid ${BORDER}` }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, background: "none", border: "none", borderBottom: activeTab === t.id ? `2px solid ${GOLD}` : "2px solid transparent", padding: "10px 4px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, marginBottom: -1 }}>
+              <span style={{ fontSize: 18 }}>{t.icon}</span>
+              <span style={{ fontSize: 9, color: activeTab === t.id ? GOLD : MUTED, fontWeight: 600, letterSpacing: 0.5 }}>{t.label}</span>
+            </button>
           ))}
         </div>
+      </div>
 
-        {isPro ? (
-          <div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <GoldBtn onClick={() => setShowUpload(true)} style={{ flex: 1, padding: "10px 0", fontSize: 12 }}>📹 Upload Content</GoldBtn>
-              <GoldBtn outline style={{ flex: 1, padding: "10px 0", fontSize: 12 }}>✏️ Edit Services</GoldBtn>
+      {/* ── Tab Content ── */}
+      <div style={{ padding: "20px" }}>
+        {loadingTab && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading...</div>}
+
+        {/* Bookings Tab */}
+        {!loadingTab && activeTab === "bookings" && (
+          bookings.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📅</div>
+              <p style={{ color: MUTED, fontSize: 13 }}>No bookings yet</p>
             </div>
-            <button onClick={onOpenDashboard} style={{ width: "100%", padding: "14px 16px", borderRadius: 12, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", color: "#0A0A0B", fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              ⚙️ Manage My Business
-            </button>
-            <button onClick={onOpenSubscription} style={{ width: "100%", padding: "14px 16px", borderRadius: 12, background: DARK3, border: `1px solid ${GOLD}44`, color: GOLD, fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              ✅ Get Verified & Boost 🚀
-            </button>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {bookings.map((b, i) => (
+                <div key={i} style={{ background: CARD, borderRadius: 14, padding: 16, border: `1px solid ${BORDER}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{b.service}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: `${GREEN}22`, color: GREEN, border: `1px solid ${GREEN}44` }}>{(b.status || "confirmed").toUpperCase()}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>📅 {b.date} · 🕐 {b.time}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: GOLD }}>₦{b.price?.toLocaleString()}</div>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 4, fontFamily: "monospace" }}>{b.reference}</div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {/* Saved Tab */}
+        {!loadingTab && activeTab === "saved" && (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔖</div>
+            <p style={{ color: MUTED, fontSize: 13 }}>Saved posts coming soon</p>
           </div>
-        ) : (
-          <div style={{ background: `linear-gradient(135deg, #1a0a2e, #2d1654)`, borderRadius: 14, padding: "16px 18px", border: `1px solid #7C5CB544`, cursor: "pointer" }} onClick={() => setShowScanner(true)}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ fontSize: 36 }}>🤖</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: TEXT, marginBottom: 3 }}>AI Style Scanner ✨</div>
-                <div style={{ fontSize: 12, color: `${TEXT}88` }}>Scan your face, hair or nails for personalized recommendations</div>
-              </div>
-              <div style={{ background: `linear-gradient(135deg, #7C5CB5, #B56C8A)`, borderRadius: 10, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: TEXT, flexShrink: 0 }}>Scan Now</div>
+        )}
+
+        {/* Following Tab */}
+        {!loadingTab && activeTab === "following" && (
+          following.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>👥</div>
+              <p style={{ color: MUTED, fontSize: 13 }}>You haven't followed anyone yet</p>
             </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {following.map((f, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD, borderRadius: 14, padding: "12px 14px", border: `1px solid ${BORDER}` }}>
+                  <Avatar initials={(f.following_name || "P").slice(0, 2).toUpperCase()} size={42} color={GOLD} img={f.following_avatar || null} />
+                  <span style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{f.following_name}</span>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {/* Settings Tab */}
+        {activeTab === "settings" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button onClick={() => setShowEdit(true)} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>✏️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Edit Profile</div>
+                <div style={{ fontSize: 12, color: MUTED }}>Change photo, name, username, bio</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
+            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>🔔</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Notifications</div>
+                <div style={{ fontSize: 12, color: MUTED }}>Manage your alerts</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
+            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>🔒</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Privacy & Security</div>
+                <div style={{ fontSize: 12, color: MUTED }}>Password, account privacy</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
+            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>💳</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Payment Methods</div>
+                <div style={{ fontSize: 12, color: MUTED }}>Cards, bank accounts</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
+            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>🌍</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Language & Region</div>
+                <div style={{ fontSize: 12, color: MUTED }}>Country, currency, language</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
+            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>❓</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Help & Support</div>
+                <div style={{ fontSize: 12, color: MUTED }}>FAQs, contact us</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
+            <button onClick={onLogout} style={{ background: `${RED}11`, border: `1px solid ${RED}33`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>🚪</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Log Out</div>
+                <div style={{ fontSize: 12, color: MUTED }}>Sign out of your account</div>
+              </div>
+            </button>
           </div>
         )}
       </div>
 
-      {isPro && (
-        <div style={{ margin: "16px 20px 0", background: `linear-gradient(135deg, ${GOLD}22, ${DARK3})`, borderRadius: 14, padding: "14px 18px", border: `1px solid ${GOLD}33`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>THIS MONTH'S EARNINGS</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: GOLD }}>₦0</div>
-          </div>
-          <button style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}44`, borderRadius: 8, color: GOLD, padding: "8px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Withdraw</button>
-        </div>
-      )}
-
-      {/* Following list (pros the user follows) */}
-      {followingPros.length > 0 && (
-        <div style={{ margin: "16px 20px 0" }}>
-          <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>FOLLOWING ({followingPros.length})</div>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 4 }}>
-            {followingPros.map(p => (
-              <div key={p.id} style={{ flexShrink: 0, width: 90, textAlign: "center" }}>
-                <Avatar initials={(p.full_name || "PR").slice(0, 2).toUpperCase()} size={56} color={GOLD} style={{ margin: "0 auto 6px" }} />
-                <div style={{ fontSize: 11, color: TEXT, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.full_name}</div>
-                <div style={{ fontSize: 10, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.category}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Marketplace quick actions for everyone */}
-      <div style={{ margin: "16px 20px 0", display: "flex", gap: 10 }}>
-        <button onClick={() => setShowProductUpload(true)} style={{ flex: 1, background: CARD, borderRadius: 14, padding: "14px", border: `1px solid ${BORDER}`, cursor: "pointer", color: TEXT, fontWeight: 600, fontSize: 13 }}>🛍️ Sell a Product</button>
-        <button onClick={() => setShowCollab(true)} style={{ flex: 1, background: CARD, borderRadius: 14, padding: "14px", border: `1px solid ${BORDER}`, cursor: "pointer", color: TEXT, fontWeight: 600, fontSize: 13 }}>🤝 Partner With Us</button>
-      </div>
-
-      <div style={{ padding: "16px 20px" }}>
-        {[
-          { icon: "📅", label: "My Bookings", sub: "View & manage appointments" },
-          { icon: "🛍️", label: "Marketplace", sub: "Browse & sell products", action: "marketplace" },
-          { icon: "❤️", label: isPro ? "My Services" : "Saved Professionals", sub: isPro ? "Manage your service offerings" : "Your beauty favorites" },
-          { icon: "💬", label: "Messages", sub: "Chat with " + (isPro ? "clients" : "professionals") },
-          { icon: "💳", label: "Payment Methods", sub: isPro ? "Bank accounts & payouts" : "Cards & wallet" },
-          { icon: "🔔", label: "Notifications", sub: "Booking reminders & offers" },
-          { icon: "🔒", label: "Security", sub: "Password & 2FA" },
-          { icon: "🚪", label: "Sign Out", sub: "Log out of STYLEX", danger: true },
-        ].map((item, i) => (
-          <div key={i} onClick={async () => {
-            if (item.label === "Sign Out") { await supabase.auth.signOut(); onLogout(); }
-            else if (item.action === "marketplace") { onOpenMarketplace(); }
-          }} style={{ background: CARD, borderRadius: 14, padding: "16px 18px", marginBottom: 10, border: `1px solid ${item.danger ? "#ff444433" : BORDER}`, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
-            <span style={{ fontSize: 20 }}>{item.icon}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: item.danger ? "#ff6666" : TEXT }}>{item.label}</div>
-              <div style={{ fontSize: 12, color: MUTED }}>{item.sub}</div>
-            </div>
-            <span style={{ color: MUTED, fontSize: 16 }}>›</span>
-          </div>
-        ))}
-      </div>
-
-      {showScanner && <AIScannerModal onClose={() => setShowScanner(false)} realPros={realPros} onBookPro={onBookPro} />}
-      {showProductUpload && <ProductUploadModal user={user} onClose={() => setShowProductUpload(false)} />}
-      {showCollab && <CollabModal user={user} onClose={() => setShowCollab(false)} />}
-      {showUpload && <PortfolioUploadModal user={user} onClose={() => setShowUpload(false)} />}
-      {isPro && (
-        <div style={{ position: "fixed", bottom: 80, right: 20, zIndex: 200 }}>
-          <button onClick={() => setShowUpload(true)} style={{ width: 60, height: 60, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, boxShadow: `0 4px 20px ${GOLD}66` }}>+</button>
-          <div style={{ fontSize: 9, color: GOLD, textAlign: "center", marginTop: 4, fontWeight: 700 }}>UPLOAD</div>
-        </div>
+      {showEdit && (
+        <EditProfileModal
+          user={user}
+          onClose={() => setShowEdit(false)}
+          onSaved={(fields) => {
+            setMyAvatar(fields.avatarUrl || "");
+            setMyUsername(fields.username || "");
+            setMyName(fields.name || "");
+            if (onUserUpdate) onUserUpdate({ name: fields.name });
+          }}
+        />
       )}
     </div>
   );
 }
 
-// ─── PRO PROFILE ───
-function ProProfileScreen({ pro, onBack, user }) {
-  const [tab, setTab] = useState("posts");
-  const [following, setFollowing] = useState(false);
-  const [showBook, setShowBook] = useState(false);
-  const [proWork, setProWork] = useState([]);
-  const [loadingWork, setLoadingWork] = useState(true);
+// ─── PRO PROFILE SCREEN ───
+function ProProfileScreen({ pro, user, onBack, onBook }) {
+  const [activeTab, setActiveTab] = useState("posts");
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDash, setShowDash] = useState(false);
+  const [showSub, setShowSub] = useState(false);
+  const [myAvatar, setMyAvatar] = useState(pro.avatarUrl || "");
+  const [myUsername, setMyUsername] = useState(pro.username || "");
+  const [myName, setMyName] = useState(pro.name || "");
+  const [isVerified, setIsVerified] = useState(pro.verified || false);
+  const [isBoosted, setIsBoosted] = useState(pro.boosted || false);
   const [followerCount, setFollowerCount] = useState(0);
-  const [proPosts, setProPosts] = useState([]);
-  const [loadingPosts, setLoadingPosts] = useState(true);
-  const [openPost, setOpenPost] = useState(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [posts, setPosts] = useState([]);
+  const [portfolio, setPortfolio] = useState([]);
+  const [products, setProducts] = useState([]);
+  // eslint-disable-next-line no-unused-vars
+  const [reviews, setReviews] = useState([]);
+  const [showPortUpload, setShowPortUpload] = useState(false);
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [videoModal, setVideoModal] = useState(null);
+  const [loadingTab, setLoadingTab] = useState(false);
 
-  // The real DB id (realPros use "db-<uuid>"); demo pros won't have one
-  const realProId = typeof pro.id === "string" && pro.id.startsWith("db-") ? pro.id.slice(3) : null;
+  const isOwner = user && (pro.id === "db-" + user.id || pro.id === user.id);
+  const proDbId = typeof pro.id === "string" && pro.id.startsWith("db-") ? pro.id.replace("db-", "") : pro.id;
 
-  // Load this pro's uploaded portfolio photos
   useEffect(() => {
-    if (!realProId) { setLoadingWork(false); return; }
-    supabase.from("portfolio").select("*").eq("pro_id", realProId).order("created_at", { ascending: false })
-      .then(({ data }) => { setProWork(data || []); setLoadingWork(false); });
-  }, [realProId]);
-
-  // Load this pro's feed posts (videos + photos) for their profile grid
-  useEffect(() => {
-    if (!realProId) { setLoadingPosts(false); return; }
-    supabase.from("posts").select("*").eq("pro_id", realProId).order("created_at", { ascending: false })
-      .then(({ data }) => { setProPosts(data || []); setLoadingPosts(false); });
-  }, [realProId]);
-
-  // Load follower count + whether the current user already follows this pro
-  useEffect(() => {
-    if (!realProId) return;
-    supabase.from("follows").select("*", { count: "exact", head: true }).eq("pro_id", realProId)
+    if (!proDbId) return;
+    // follower count
+    supabase.from("follows").select("id", { count: "exact" }).eq("following_id", proDbId)
       .then(({ count }) => setFollowerCount(count || 0));
+    // is following?
     if (user) {
-      supabase.from("follows").select("*").eq("pro_id", realProId).eq("follower_id", user.id).maybeSingle()
-        .then(({ data }) => setFollowing(!!data));
+      supabase.from("follows").select("id").eq("follower_id", user.id).eq("following_id", proDbId).maybeSingle()
+        .then(({ data }) => setIsFollowing(!!data));
     }
-  }, [realProId, user]);
+    // pro's latest badge & avatar info
+    supabase.from("profiles").select("is_verified, is_boosted, avatar_url, username, full_name").eq("id", proDbId).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setIsVerified(data.is_verified === true);
+          setIsBoosted(data.is_boosted === true);
+          if (data.avatar_url) setMyAvatar(data.avatar_url);
+          if (data.username) setMyUsername(data.username);
+          if (data.full_name) setMyName(data.full_name);
+        }
+      });
+  }, [proDbId, user]);
 
-  const toggleFollow = async () => {
-    if (!user) { alert("Please sign in to follow professionals."); return; }
-    if (!realProId) { setFollowing(f => !f); return; } // demo pros: local only
-    if (following) {
-      await supabase.from("follows").delete().eq("pro_id", realProId).eq("follower_id", user.id);
-      setFollowing(false);
+  useEffect(() => {
+    if (!proDbId) return;
+    setLoadingTab(true);
+    if (activeTab === "posts") {
+      supabase.from("posts").select("*").eq("pro_id", proDbId).order("created_at", { ascending: false })
+        .then(({ data }) => { setPosts(data || []); setLoadingTab(false); });
+    } else if (activeTab === "portfolio") {
+      supabase.from("portfolio").select("*").eq("pro_id", proDbId).order("created_at", { ascending: false })
+        .then(({ data }) => { setPortfolio(data || []); setLoadingTab(false); });
+    } else if (activeTab === "products") {
+      supabase.from("products").select("*").eq("seller_id", proDbId).eq("status", "active")
+        .then(({ data }) => { setProducts(data || []); setLoadingTab(false); });
+    } else if (activeTab === "reviews") {
+      supabase.from("bookings").select("*").eq("status", "confirmed").limit(10)
+        .then(({ data }) => { setReviews(data || []); setLoadingTab(false); });
+    } else {
+      setLoadingTab(false);
+    }
+  }, [proDbId, activeTab]);
+
+  const handleFollow = async () => {
+    if (!user) return;
+    if (isFollowing) {
+      await supabase.from("follows").delete().eq("follower_id", user.id).eq("following_id", proDbId);
+      setIsFollowing(false);
       setFollowerCount(c => Math.max(0, c - 1));
     } else {
-      await supabase.from("follows").insert({ pro_id: realProId, follower_id: user.id });
-      setFollowing(true);
+      await supabase.from("follows").insert({ follower_id: user.id, following_id: proDbId, following_name: pro.name, following_avatar: myAvatar || null });
+      setIsFollowing(true);
       setFollowerCount(c => c + 1);
     }
   };
 
+  const tabs = [
+    { id: "posts", icon: "▦", label: "Posts" },
+    { id: "portfolio", icon: "🖼", label: "Portfolio" },
+    { id: "services", icon: "💼", label: "Services" },
+    { id: "products", icon: "🛍", label: "Products" },
+    { id: "reviews", icon: "⭐", label: "Reviews" },
+    { id: "settings", icon: "⚙️", label: "Settings" },
+  ];
+
+  const initials = (myName || pro.name || "P").slice(0, 2).toUpperCase();
+
   return (
-    <div style={{ minHeight: "100vh", background: DARK, fontFamily: "'Helvetica Neue', Arial, sans-serif", paddingBottom: 100 }}>
-      <div style={{ padding: "16px 20px" }}>
-        <button onClick={onBack} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>← Back</button>
+    <div style={{ minHeight: "100vh", background: DARK, paddingBottom: 100 }}>
+      {/* Back button */}
+      <div style={{ position: "sticky", top: 0, zIndex: 50, background: `${DARK}ee`, backdropFilter: "blur(10px)", padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${BORDER}` }}>
+        <button onClick={onBack} style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 8, color: TEXT, width: 34, height: 34, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>←</button>
+        <span style={{ fontWeight: 700, fontSize: 15, color: TEXT }}>{myName || pro.name}</span>
+        {isVerified && <VerifiedBadge verified size={15} />}
       </div>
-      <div style={{ margin: "0 20px 20px", borderRadius: 20, background: `linear-gradient(135deg, ${pro.color}22, ${DARK3})`, border: `1px solid ${pro.color}44`, padding: 24 }}>
-        <div style={{ display: "flex", gap: 18, alignItems: "flex-start" }}>
-          <Avatar initials={pro.avatar} size={72} color={pro.color} />
+
+      {/* Header */}
+      <div style={{ background: `linear-gradient(180deg, ${DARK2} 0%, ${DARK} 100%)`, padding: "24px 20px 0" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 14 }}>
+          <Avatar initials={initials} size={80} color={pro.color || GOLD} img={myAvatar} />
           <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 20, margin: 0 }}>{pro.name}</h2>
-              {pro.verified && <VerifiedBadge verified={pro.verified} variant="pill" />}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+              <span style={{ fontWeight: 800, fontSize: 17, color: TEXT }}>{myName || pro.name}</span>
+              <VerifiedBadge verified={isVerified} size={15} />
+              {isBoosted && <span style={{ fontSize: 11, color: GREEN }}>🚀</span>}
             </div>
-            <div style={{ color: MUTED, fontSize: 13, marginBottom: 8 }}>{pro.handle} · {pro.location}</div>
-            <Badge text={pro.category} color={pro.color} />
-            <p style={{ color: `${TEXT}99`, fontSize: 13, margin: "10px 0 12px", lineHeight: 1.6 }}>{pro.bio}</p>
-            <div style={{ display: "flex", gap: 20, marginBottom: 14 }}>
-              {[{ label: "Followers", val: realProId ? followerCount : pro.followers }, { label: "Reviews", val: pro.reviews }, { label: "Rating", val: `${pro.rating}★` }].map(s => (
-                <div key={s.label}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>{s.val}</div>
-                  <div style={{ fontSize: 11, color: MUTED }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <GoldBtn onClick={toggleFollow} outline={!following} style={{ fontSize: 12, padding: "8px 18px" }}>{following ? "✓ Following" : "+ Follow"}</GoldBtn>
-              <GoldBtn onClick={() => setShowBook(true)} style={{ fontSize: 12, padding: "8px 18px" }}>Book Now</GoldBtn>
-            </div>
+            {myUsername && <div style={{ fontSize: 13, color: GOLD, fontWeight: 600, marginBottom: 4 }}>@{myUsername}</div>}
+            <Badge text={pro.category} color={pro.color || GOLD} />
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>📍 {pro.location}</div>
           </div>
         </div>
-      </div>
 
-      <div style={{ padding: "0 20px", display: "flex", gap: 0, borderBottom: `1px solid ${BORDER}`, marginBottom: 16 }}>
-        {["posts", "portfolio", "reviews"].map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", padding: "12px 0", fontWeight: 600, fontSize: 13, color: tab === t ? GOLD : MUTED, borderBottom: tab === t ? `2px solid ${GOLD}` : "2px solid transparent", textTransform: "capitalize" }}>{t}</button>
-        ))}
-      </div>
-
-      {tab === "posts" && (
-        <div style={{ padding: "0 20px 100px" }}>
-          {loadingPosts ? (
-            <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading posts...</div>
-          ) : proPosts.length > 0 ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              {proPosts.map(post => (
-                <div key={post.id} onClick={() => setOpenPost(post)} style={{ aspectRatio: "1", borderRadius: 12, overflow: "hidden", border: `1px solid ${pro.color}33`, position: "relative", cursor: "pointer", background: "#000" }}>
-                  {post.media_type === "video" ? (
-                    <>
-                      <video src={post.media_url} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                      <div style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", borderRadius: 6, padding: "2px 6px", fontSize: 10, color: TEXT }}>▶</div>
-                    </>
-                  ) : (
-                    <img src={post.media_url} alt={post.caption || "post"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: 40 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📱</div>
-              <p style={{ color: MUTED, fontSize: 13 }}>No posts yet</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === "portfolio" && (
-        <div style={{ padding: "0 20px 100px" }}>
-          {loadingWork ? (
-            <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading work...</div>
-          ) : proWork.length > 0 ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              {proWork.map(work => (
-                <div key={work.id} style={{ aspectRatio: "1", borderRadius: 12, overflow: "hidden", border: `1px solid ${pro.color}33`, position: "relative" }}>
-                  <img src={work.image_url} alt={work.style_name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                  {work.style_name && (
-                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(0,0,0,0.8))", padding: "12px 6px 5px", fontSize: 9, color: TEXT, fontWeight: 600 }}>{work.style_name}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: 40 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📸</div>
-              <p style={{ color: MUTED, fontSize: 13 }}>No work posted yet</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === "reviews" && (
-        <div style={{ padding: "0 20px 100px", display: "flex", flexDirection: "column", gap: 14 }}>
-          {[{ user: "Chioma A.", rating: 5, text: "Absolutely flawless! Best in the business.", date: "2 days ago" }, { user: "Ngozi M.", rating: 5, text: "Professional and talented. Will rebook!", date: "1 week ago" }].map((rev, i) => (
-            <div key={i} style={{ background: CARD, borderRadius: 14, padding: 16, border: `1px solid ${BORDER}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontWeight: 600, fontSize: 13, color: TEXT }}>{rev.user}</span>
-                <span style={{ fontSize: 11, color: MUTED }}>{rev.date}</span>
-              </div>
-              <div style={{ color: GOLD, fontSize: 13, marginBottom: 6 }}>{"★".repeat(rev.rating)}</div>
-              <p style={{ fontSize: 13, color: `${TEXT}88`, margin: 0 }}>{rev.text}</p>
+        {/* Stats row */}
+        <div style={{ display: "flex", gap: 0, marginBottom: 14, background: DARK3, borderRadius: 14, overflow: "hidden", border: `1px solid ${BORDER}` }}>
+          {[
+            { label: "Followers", value: formatNum(followerCount) },
+            { label: "Rating", value: pro.rating ? `${pro.rating}★` : "—" },
+            { label: "Reviews", value: pro.reviews || 0 },
+          ].map((s, i) => (
+            <div key={s.label} style={{ flex: 1, textAlign: "center", padding: "12px 8px", borderRight: i < 2 ? `1px solid ${BORDER}` : "none" }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>{s.value}</div>
+              <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{s.label}</div>
             </div>
           ))}
         </div>
-      )}
-      {showBook && <BookingModal pro={pro} user={user} onClose={() => setShowBook(false)} />}
-      {openPost && (
-        <Modal onClose={() => setOpenPost(null)}>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-            <button onClick={() => setOpenPost(null)} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+
+        {/* Bio */}
+        {pro.bio && <p style={{ fontSize: 13, color: `${TEXT}bb`, lineHeight: 1.6, margin: "0 0 14px" }}>{pro.bio}</p>}
+
+        {/* Action buttons */}
+        {isOwner ? (
+          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            <button onClick={() => setShowEdit(true)} style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, color: TEXT, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>✏️ Edit Profile</button>
+            <button onClick={() => setShowDash(true)} style={{ flex: 1, background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 10, color: GOLD, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Dashboard</button>
           </div>
-          <div style={{ borderRadius: 14, overflow: "hidden", background: "#000", marginBottom: 12 }}>
-            {openPost.media_type === "video" ? (
-              <video src={openPost.media_url} controls autoPlay playsInline style={{ width: "100%", maxHeight: 420, display: "block" }} />
+        ) : (
+          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            <button onClick={handleFollow} style={{ flex: 1, background: isFollowing ? DARK3 : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: isFollowing ? `1px solid ${BORDER}` : "none", borderRadius: 10, color: isFollowing ? TEXT : "#0A0A0B", padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              {isFollowing ? "Following ✓" : "Follow"}
+            </button>
+            <GoldBtn onClick={() => onBook(pro)} style={{ flex: 1, padding: "10px" }}>Book Now</GoldBtn>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div style={{ display: "flex", overflowX: "auto", scrollbarWidth: "none", borderBottom: `1px solid ${BORDER}` }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flexShrink: 0, background: "none", border: "none", borderBottom: activeTab === t.id ? `2px solid ${GOLD}` : "2px solid transparent", padding: "10px 14px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, marginBottom: -1 }}>
+              <span style={{ fontSize: 16 }}>{t.icon}</span>
+              <span style={{ fontSize: 9, color: activeTab === t.id ? GOLD : MUTED, fontWeight: 600 }}>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab content */}
+      <div style={{ padding: "16px 16px" }}>
+        {loadingTab && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading...</div>}
+
+        {/* Posts grid */}
+        {!loadingTab && activeTab === "posts" && (
+          <>
+            {isOwner && (
+              <button onClick={() => setShowCreatePost(true)} style={{ width: "100%", background: `${GOLD}15`, border: `1px dashed ${GOLD}55`, borderRadius: 12, color: GOLD, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 14 }}>+ Create New Post</button>
+            )}
+            {posts.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>📭</div>
+                <p style={{ color: MUTED, fontSize: 13 }}>No posts yet</p>
+              </div>
             ) : (
-              <img src={openPost.media_url} alt={openPost.caption || "post"} style={{ width: "100%", maxHeight: 420, objectFit: "contain", display: "block" }} />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3 }}>
+                {posts.map(post => (
+                  <div key={post.id} onClick={() => post.media_type === "video" && setVideoModal(post)} style={{ aspectRatio: "1", borderRadius: 4, overflow: "hidden", position: "relative", cursor: "pointer", background: DARK3 }}>
+                    {post.media_type === "video" ? (
+                      <>
+                        <video src={post.media_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} muted playsInline />
+                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <span style={{ fontSize: 20, color: "#fff", opacity: 0.9 }}>▶</span>
+                        </div>
+                      </>
+                    ) : (
+                      <img src={post.media_url} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Portfolio grid */}
+        {!loadingTab && activeTab === "portfolio" && (
+          <>
+            {isOwner && (
+              <button onClick={() => setShowPortUpload(true)} style={{ width: "100%", background: `${GOLD}15`, border: `1px dashed ${GOLD}55`, borderRadius: 12, color: GOLD, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 14 }}>+ Add Portfolio Work</button>
+            )}
+            {portfolio.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>🖼️</div>
+                <p style={{ color: MUTED, fontSize: 13 }}>No portfolio photos yet</p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3 }}>
+                {portfolio.map(item => (
+                  <div key={item.id} style={{ aspectRatio: "1", borderRadius: 4, overflow: "hidden", background: DARK3 }}>
+                    <img src={item.image_url} alt={item.style_name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Services & Pricing */}
+        {!loadingTab && activeTab === "services" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {pro.tags && pro.tags.map((tag, i) => (
+              <div key={tag} style={{ background: CARD, borderRadius: 14, padding: "14px 16px", border: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{tag}</div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{45 + i * 15} minutes</div>
+                </div>
+                <div>
+                  {pro.shopPrice && <div style={{ fontSize: 13, color: GOLD, fontWeight: 700 }}>🏪 ₦{(pro.shopPrice + i * 2000).toLocaleString()}</div>}
+                  {pro.mobilePrice && <div style={{ fontSize: 12, color: MUTED }}>🚗 ₦{(pro.mobilePrice + i * 2000).toLocaleString()}</div>}
+                </div>
+              </div>
+            ))}
+            {(!pro.tags || pro.tags.length === 0) && (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <p style={{ color: MUTED, fontSize: 13 }}>No services listed yet</p>
+              </div>
             )}
           </div>
-          {openPost.caption && <p style={{ color: TEXT, fontSize: 14, margin: "0 0 6px" }}>{openPost.caption}</p>}
-          <div style={{ display: "flex", gap: 14, color: MUTED, fontSize: 13 }}>
-            <span>❤️ {formatNum(openPost.likes || 0)}</span>
-            <span>💬 {formatNum(openPost.comments || 0)}</span>
+        )}
+
+        {/* Products */}
+        {!loadingTab && activeTab === "products" && (
+          products.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🛍️</div>
+              <p style={{ color: MUTED, fontSize: 13 }}>No products listed</p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {products.map(p => (
+                <div key={p.id} style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                  <div style={{ height: 90, background: `${GOLD}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>{p.emoji || "🛍️"}</div>
+                  <div style={{ padding: "10px 12px" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 6 }}>{p.name}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 800, fontSize: 14, color: GOLD }}>₦{p.price?.toLocaleString()}</span>
+                      <button style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Buy</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {/* Reviews */}
+        {!loadingTab && activeTab === "reviews" && (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>⭐</div>
+            <p style={{ color: MUTED, fontSize: 13 }}>Reviews coming soon</p>
           </div>
-        </Modal>
+        )}
+
+        {/* Settings (owner only) */}
+        {activeTab === "settings" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {isOwner && (
+              <>
+                <button onClick={() => setShowEdit(true)} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+                  <span style={{ fontSize: 22 }}>✏️</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Edit Profile</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>Photo, name, username, bio</div>
+                  </div>
+                  <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+                </button>
+                <button onClick={() => setShowDash(true)} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+                  <span style={{ fontSize: 22 }}>📊</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Pro Dashboard</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>Services, pricing, availability</div>
+                  </div>
+                  <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+                </button>
+                <button onClick={() => setShowSub(true)} style={{ background: CARD, border: `1px solid ${GOLD}22`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+                  <span style={{ fontSize: 22 }}>✅</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: GOLD }}>Verification & Boost</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>Get verified · Reach more clients</div>
+                  </div>
+                  <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+                </button>
+              </>
+            )}
+            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>🔔</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Notifications</div>
+                <div style={{ fontSize: 12, color: MUTED }}>Manage your alerts</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
+            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>❓</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Help & Support</div>
+                <div style={{ fontSize: 12, color: MUTED }}>FAQs, contact us</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Video full-screen modal */}
+      {videoModal && (
+        <div onClick={() => setVideoModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.96)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <video src={videoModal.media_url} controls autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "90vh" }} onClick={e => e.stopPropagation()} />
+          <button onClick={() => setVideoModal(null)} style={{ position: "absolute", top: 20, right: 20, background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 8, color: "#fff", padding: "8px 14px", cursor: "pointer", fontSize: 16 }}>✕</button>
+        </div>
+      )}
+
+      {showPortUpload && <PortfolioUploadModal user={user} onClose={() => setShowPortUpload(false)} />}
+      {showCreatePost && <CreatePostModal user={user} onClose={() => setShowCreatePost(false)} onPosted={() => { setShowCreatePost(false); setActiveTab("posts"); }} />}
+      {showDash && <ProDashboard user={user} onClose={() => setShowDash(false)} onOpenSubscription={() => { setShowDash(false); setShowSub(true); }} />}
+      {showSub && <SubscriptionModal user={user} onClose={() => setShowSub(false)} />}
+      {showEdit && (
+        <EditProfileModal
+          user={user}
+          onClose={() => setShowEdit(false)}
+          onSaved={(fields) => {
+            setMyAvatar(fields.avatarUrl || "");
+            setMyUsername(fields.username || "");
+            setMyName(fields.name || "");
+          }}
+        />
       )}
     </div>
   );
 }
 
-// ─── STYLEX ASSISTANT (CHATBOT) ───
-function StylexAssistant() {
-  const [isOpen, setIsOpen] = useState(false);
+// ─── STYLEX ASSISTANT (AI CHATBOT) ───
+function StylexAssistant({ user }) {
+  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm the Stylex Assistant. Ask me about bookings, services, or how Stylex works!" }
+    { role: "assistant", text: "Hi! I'm your STYLEX beauty assistant ✨ Ask me anything about hair, makeup, skincare, or finding the right professional." }
   ]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-    const userMessage = { role: 'user', content: input };
-    const newMessages = [...messages, userMessage];
+  useEffect(() => {
+    if (open && bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [messages, open]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput("");
+    const newMessages = [...messages, { role: "user", text }];
     setMessages(newMessages);
-    setInput('');
     setLoading(true);
-
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages })
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newMessages.map(m => ({ role: m.role, content: m.text })) })
       });
-      const data = await response.json();
-      if (data.error) {
-        setMessages([...newMessages, { role: 'assistant', content: "Error: " + data.error }]);
-      } else {
-        const reply = data.content[0].text;
-        setMessages([...newMessages, { role: 'assistant', content: reply }]);
-      }
-    } catch (error) {
-      setMessages([...newMessages, { role: 'assistant', content: "Sorry, I'm having trouble connecting. Please try again." }]);
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: "assistant", text: data.reply || "Sorry, I couldn't get a response. Please try again." }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", text: "Something went wrong. Please try again." }]);
     }
     setLoading(false);
   };
 
   return (
-    <div style={{ position: 'fixed', bottom: 90, right: 20, zIndex: 1000 }}>
-      {isOpen && (
-        <div style={{ width: 320, height: 420, background: '#0a0a0a', border: '2px solid #d4af37', borderRadius: 12, display: 'flex', flexDirection: 'column', marginBottom: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-          <div style={{ background: '#d4af37', color: '#000', padding: 12, borderRadius: '10px 10px 0 0', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Stylex Assistant</span>
-            <span onClick={() => setIsOpen(false)} style={{ cursor: 'pointer' }}>✕</span>
+    <>
+      <button onClick={() => setOpen(o => !o)} style={{ position: "fixed", bottom: 86, right: 20, width: 52, height: 52, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", cursor: "pointer", fontSize: 22, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 20px ${GOLD}55`, zIndex: 200 }}>
+        {open ? "✕" : "✨"}
+      </button>
+
+      {open && (
+        <div style={{ position: "fixed", bottom: 150, right: 20, width: 320, maxHeight: 440, background: DARK2, border: `1px solid ${BORDER}`, borderRadius: 20, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 8px 40px rgba(0,0,0,0.6)`, zIndex: 200 }}>
+          <div style={{ padding: "14px 16px", borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✨</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>STYLEX Assistant</div>
+              <div style={{ fontSize: 10, color: GREEN }}>● Online</div>
+            </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-            {messages.map((msg, i) => (
-              <div key={i} style={{ marginBottom: 8, textAlign: msg.role === 'user' ? 'right' : 'left' }}>
-                <span style={{ background: msg.role === 'user' ? '#d4af37' : '#222', color: msg.role === 'user' ? '#000' : '#fff', padding: '6px 10px', borderRadius: 8, display: 'inline-block', maxWidth: '80%', fontSize: 14 }}>
-                  {msg.content}
-                </span>
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {messages.map((m, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+                <div style={{ maxWidth: "80%", background: m.role === "user" ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3, color: m.role === "user" ? "#0A0A0B" : TEXT, borderRadius: m.role === "user" ? "14px 14px 2px 14px" : "14px 14px 14px 2px", padding: "10px 13px", fontSize: 13, lineHeight: 1.5 }}>{m.text}</div>
               </div>
             ))}
-            {loading && <div style={{ color: '#888', fontSize: 13 }}>Typing...</div>}
+            {loading && (
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                <div style={{ background: DARK3, borderRadius: "14px 14px 14px 2px", padding: "10px 14px", color: MUTED, fontSize: 13 }}>Thinking...</div>
+              </div>
+            )}
+            <div ref={bottomRef} />
           </div>
-          <div style={{ display: 'flex', padding: 8, borderTop: '1px solid #333' }}>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder="Ask something..."
-              style={{ flex: 1, padding: 8, borderRadius: 6, border: 'none', marginRight: 8 }}
-            />
-            <button onClick={sendMessage} style={{ background: '#d4af37', border: 'none', borderRadius: 6, padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer' }}>
-              Send
-            </button>
+          <div style={{ padding: "10px 12px", borderTop: `1px solid ${BORDER}`, display: "flex", gap: 8 }}>
+            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Ask me anything..." style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 12px", color: TEXT, fontSize: 13, outline: "none" }} />
+            <button onClick={send} disabled={loading} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 10, width: 38, height: 38, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>→</button>
           </div>
         </div>
       )}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ width: 56, height: 56, borderRadius: '50%', background: '#d4af37', border: 'none', fontSize: 24, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
-      >
-        💬
-      </button>
-    </div>
+    </>
   );
 }
 
 // ─── MAIN APP ───
-export default function StylexApp() {
-  const [activeTab, setActiveTab] = useState("home");
+function StylexApp() {
   const [user, setUser] = useState(null);
+  const [activeTab, setActiveTab] = useState("home");
   const [viewingPro, setViewingPro] = useState(null);
   const [realPros, setRealPros] = useState([]);
-  const [showProDashboard, setShowProDashboard] = useState(false);
-  const [showSubscription, setShowSubscription] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [scannerBookPro, setScannerBookPro] = useState(null);
+  const [bookingPro, setBookingPro] = useState(null);
+  const [showAuth, setShowAuth] = useState(false);
   const [profileRefresh, setProfileRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [selectedCountry, setSelectedCountry] = useState("ALL");
 
-  // EFFECT 1 — fetch real professionals from Supabase (FIXED: now its own top-level effect)
-  useEffect(() => {
-    supabase
+  // Load real professionals from Supabase
+  const loadPros = async () => {
+    const { data } = await supabase
       .from("profiles")
-      .select("*")
-      .eq("user_type", "professional")
-      .then(({ data }) => {
-        if (data) {
-          const mapped = data
-            .filter(p => p.category) // only pros who've set up their profile
-            .map(p => ({
-              id: "db-" + p.id,
-              name: p.full_name || "Professional",
-              handle: "@" + (p.full_name || "pro").toLowerCase().replace(/\s+/g, ""),
-              category: p.category || "Beauty Pro",
-              location: p.location || "Nigeria",
-              avatar: (p.full_name || "PR").slice(0, 2).toUpperCase(),
-              rating: 5.0,
-              reviews: 0,
-              followers: "0",
-              shopPrice: p.shop_price || 0,
-              mobilePrice: p.mobile_price || 0,
-              offersShop: p.offers_shop !== false,
-              offersMobile: p.offers_mobile !== false,
-              bio: p.bio || "",
-              tags: p.services ? p.services.split(",").map(s => s.trim()) : ["Service"],
-              verified: p.is_verified === true,
-              available: p.is_available !== false,
-              color: "#C9A84C"
-            }));
-          setRealPros(mapped);
-        }
-      });
-  }, []);
+      .select("id, full_name, category, location, bio, shop_price, mobile_price, offers_shop, offers_mobile, is_available, is_verified, is_boosted, phone, services, avatar_url, username, country")
+      .eq("user_type", "professional");
+    if (data) {
+      setRealPros(data.filter(p => p.full_name && p.category).map(p => ({
+        id: "db-" + p.id,
+        name: p.full_name,
+        handle: p.username ? "@" + p.username : "@" + p.full_name.replace(/\s+/g, "").toLowerCase(),
+        category: p.category || "",
+        location: p.location || "",
+        country: p.country || "",
+        avatar: (p.full_name || "PR").slice(0, 2).toUpperCase(),
+        avatarUrl: p.avatar_url || null,
+        username: p.username || "",
+        rating: 4.8,
+        reviews: 0,
+        followers: "0",
+        shopPrice: p.shop_price || 0,
+        mobilePrice: p.mobile_price || 0,
+        offersShop: p.offers_shop !== false,
+        offersMobile: p.offers_mobile !== false,
+        bio: p.bio || "",
+        tags: p.services ? p.services.split(",").map(s => s.trim()).filter(Boolean) : [p.category],
+        verified: p.is_verified === true,
+        boosted: p.is_boosted === true,
+        available: p.is_available !== false,
+        color: GOLD,
+      })));
+    }
+  };
 
-  // EFFECT 2 — auth/session (FIXED: separated from the fetch above)
+  // Auth session
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle()
-          .then(({ data: profile }) => {
-            setUser({
-              id: session.user.id,
-              email: session.user.email,
-              name: profile?.full_name || session.user.email.split("@")[0],
-              type: profile?.user_type || "client"
-            });
-          });
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: profile?.full_name || session.user.email.split("@")[0],
+          type: profile?.user_type || "client"
+        });
       }
+      await loadPros();
       setLoading(false);
-    });
+    };
+    init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) setUser(null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT") { setUser(null); setActiveTab("home"); }
     });
-
     return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAuth = (userData) => {
     setUser(userData);
-    setActiveTab("profile");
-  };
-
-  const handleLogout = () => {
-    setUser(null);
+    setShowAuth(false);
     setActiveTab("home");
   };
 
-  const navItems = [
-    { id: "home", label: "Home", icon: "🏠" },
-    { id: "explore", label: "Explore", icon: "🔍" },
-    { id: "marketplace", label: "Shop", icon: "🛍️" },
-    { id: "bookings", label: "Bookings", icon: "📅" },
-    { id: "profile", label: "Profile", icon: "👤" },
-  ];
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setActiveTab("home");
+    setViewingPro(null);
+  };
+
+  const handleUserUpdate = (fields) => {
+    setUser(u => u ? { ...u, ...fields } : u);
+    setProfileRefresh(n => n + 1);
+  };
+
+  // Country-filtered pros for Explore
+  const filteredByCountry = selectedCountry === "ALL"
+    ? realPros
+    : realPros.filter(p => (p.country || "").toUpperCase() === selectedCountry);
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: DARK, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 4, color: GOLD, fontFamily: "Georgia, serif", marginBottom: 16 }}>STYLEX</div>
-          <div style={{ color: MUTED, fontSize: 13 }}>Loading...</div>
-        </div>
+      <div style={{ minHeight: "100vh", background: DARK, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+        <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 4, color: GOLD, fontFamily: "Georgia, serif" }}>STYLEX</div>
+        <div style={{ fontSize: 13, color: MUTED }}>Loading...</div>
       </div>
     );
   }
 
+  if (showAuth) {
+    return <AuthScreen onAuthenticated={handleAuth} />;
+  }
+
+  // Viewing a pro profile
   if (viewingPro) {
     return (
-      <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight: "100vh", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-        <ProProfileScreen pro={viewingPro} user={user} onBack={() => { setViewingPro(null); setProfileRefresh(n => n + 1); }} />
+      <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
+        <ProProfileScreen
+          pro={viewingPro}
+          user={user}
+          onBack={() => setViewingPro(null)}
+          onBook={(pro) => { setViewingPro(null); setBookingPro(pro); }}
+        />
+        <StylexAssistant user={user} />
+        {bookingPro && <BookingModal pro={bookingPro} user={user} onClose={() => setBookingPro(null)} />}
       </div>
     );
   }
 
-  return (
-    <div style={{ maxWidth: 480, margin: "0 auto", background: DARK, minHeight: "100vh", position: "relative", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-      {activeTab === "home" && <HomeScreen user={user} realPros={realPros} onProfile={(pro) => setViewingPro(pro)} />}
-      {activeTab === "explore" && <ExploreScreen user={user} realPros={realPros} onProfile={(pro) => setViewingPro(pro)} />}
-      {activeTab === "marketplace" && <MarketplaceScreen user={user} onLogin={() => setActiveTab("profile")} />}
-      {activeTab === "bookings" && <BookingsScreen user={user} onLogin={() => setActiveTab("profile")} />}
-      {activeTab === "profile" && <ProfileScreen user={user} onAuth={handleAuth} onLogout={handleLogout} onOpenDashboard={() => setShowProDashboard(true)} onOpenMarketplace={() => setActiveTab("marketplace")} onOpenSubscription={() => setShowSubscription(true)} realPros={realPros} onBookPro={(pro) => setScannerBookPro(pro)} refreshKey={profileRefresh} />}
+  const navItems = [
+    { id: "home", icon: "🏠", label: "Home" },
+    { id: "explore", icon: "🔍", label: "Explore" },
+    { id: "scanner", icon: "✨", label: "Scan" },
+    { id: "marketplace", icon: "🛍️", label: "Shop" },
+    { id: "profile", icon: "👤", label: "Profile" },
+  ];
 
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: `${DARK2}f5`, backdropFilter: "blur(20px)", borderTop: `1px solid ${BORDER}`, display: "flex", padding: "8px 0 16px", zIndex: 200 }}>
-        {navItems.map(item => {
-          const active = activeTab === item.id;
-          return (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
-              <span style={{ fontSize: 20, opacity: active ? 1 : 0.4 }}>{item.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? GOLD : MUTED }}>{item.label}</span>
-              {active && <div style={{ width: 18, height: 2, borderRadius: 1, background: GOLD }} />}
-            </button>
-          );
-        })}
+  return (
+    <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", maxWidth: 480, margin: "0 auto", position: "relative" }}>
+
+      {/* ── Screens ── */}
+      {activeTab === "home" && (
+        <HomeScreen
+          user={user}
+          onProfile={(pro) => setViewingPro(pro)}
+          realPros={realPros}
+        />
+      )}
+
+      {activeTab === "explore" && (
+        <div style={{ minHeight: "100vh", background: DARK, paddingBottom: 100 }}>
+          {/* Country selector pinned at top */}
+          <div style={{ position: "sticky", top: 0, zIndex: 100, background: `${DARK}ee`, backdropFilter: "blur(12px)", borderBottom: `1px solid ${BORDER}`, padding: "12px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 18 }}>🌍</span>
+              <select
+                value={selectedCountry}
+                onChange={e => setSelectedCountry(e.target.value)}
+                style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "9px 12px", color: TEXT, fontSize: 14, outline: "none" }}
+              >
+                <option value="ALL">🌍 All Countries</option>
+                {COUNTRIES.map(c => (
+                  <option key={c.code} value={c.code}>{c.flag} {c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <ExploreScreen
+            onProfile={(pro) => setViewingPro(pro)}
+            user={user}
+            realPros={filteredByCountry}
+          />
+        </div>
+      )}
+
+      {activeTab === "scanner" && (
+        <div style={{ minHeight: "100vh", background: DARK, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 72, marginBottom: 16 }}>✨</div>
+            <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 22, marginBottom: 8 }}>AI Style Scanner</h2>
+            <p style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.7 }}>Let our AI analyze your face, hair or nails and recommend the best styles and professionals for you</p>
+            <GoldBtn onClick={() => setShowScanner(true)} style={{ padding: "14px 32px", fontSize: 15 }}>Start Scan ✨</GoldBtn>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "marketplace" && (
+        <MarketplaceScreen user={user} onLogin={() => setShowAuth(true)} />
+      )}
+
+      {activeTab === "profile" && (
+        user ? (
+          user.type === "professional" ? (
+            <ProProfileScreen
+              pro={{
+                id: "db-" + user.id,
+                name: user.name,
+                category: "",
+                location: "",
+                avatar: user.name.slice(0, 2).toUpperCase(),
+                avatarUrl: null,
+                color: GOLD,
+                tags: [],
+                bio: "",
+                verified: false,
+                available: true,
+              }}
+              user={user}
+              onBack={() => {}}
+              onBook={() => {}}
+            />
+          ) : (
+            <ProfileScreen
+              user={user}
+              onLogout={handleLogout}
+              onUserUpdate={handleUserUpdate}
+              refreshKey={profileRefresh}
+            />
+          )
+        ) : (
+          <div style={{ minHeight: "100vh", background: DARK, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 56, marginBottom: 16 }}>👤</div>
+              <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Join STYLEX</h2>
+              <p style={{ color: MUTED, fontSize: 13, marginBottom: 24 }}>Sign in to access your profile, bookings and more</p>
+              <GoldBtn onClick={() => setShowAuth(true)} style={{ padding: "13px 32px" }}>Sign In / Sign Up</GoldBtn>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── Bottom Navigation (TikTok-style) ── */}
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: `${DARK}f5`, backdropFilter: "blur(16px)", borderTop: `1px solid ${BORDER}`, display: "flex", zIndex: 300, padding: "6px 0 8px" }}>
+        {navItems.map(item => (
+          <button
+            key={item.id}
+            onClick={() => {
+              if (item.id === "scanner") { setShowScanner(true); return; }
+              setActiveTab(item.id);
+            }}
+            style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}
+          >
+            {item.id === "scanner" ? (
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, marginTop: -16, boxShadow: `0 4px 16px ${GOLD}55` }}>✨</div>
+            ) : (
+              <span style={{ fontSize: 22, opacity: activeTab === item.id ? 1 : 0.45 }}>{item.icon}</span>
+            )}
+            <span style={{ fontSize: 9, color: activeTab === item.id ? GOLD : MUTED, fontWeight: activeTab === item.id ? 700 : 500, letterSpacing: 0.3 }}>{item.label}</span>
+          </button>
+        ))}
       </div>
 
-      <StylexAssistant />
-      {showProDashboard && <ProDashboard user={user} onClose={() => setShowProDashboard(false)} onOpenSubscription={() => { setShowProDashboard(false); setShowSubscription(true); }} />}
-      {showSubscription && <SubscriptionModal user={user} onClose={() => setShowSubscription(false)} onUpdated={() => {}} />}
-      {scannerBookPro && <BookingModal pro={scannerBookPro} user={user} onClose={() => setScannerBookPro(null)} />}
+      {/* ── Floating AI Assistant ── */}
+      <StylexAssistant user={user} />
+
+      {/* ── Modals ── */}
+      {showScanner && (
+        <AIScannerModal
+          onClose={() => { setShowScanner(false); setScannerBookPro(null); }}
+          realPros={realPros}
+          onBookPro={(pro) => { setScannerBookPro(pro); setShowScanner(false); }}
+        />
+      )}
+      {scannerBookPro && (
+        <BookingModal pro={scannerBookPro} user={user} onClose={() => setScannerBookPro(null)} />
+      )}
+      {bookingPro && (
+        <BookingModal pro={bookingPro} user={user} onClose={() => setBookingPro(null)} />
+      )}
     </div>
   );
 }
+
+export default StylexApp;
