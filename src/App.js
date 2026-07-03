@@ -1901,7 +1901,6 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
           <span style={{ fontSize: 10, color: MUTED, marginLeft: 8, letterSpacing: 2 }}>BEAUTY MARKETPLACE</span>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {isPro && <button onClick={() => setShowCreate(true)} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 8, color: "#0A0A0B", padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Post</button>}
           {user && <Avatar initials={user.name.slice(0, 2).toUpperCase()} size={32} color={GOLD} />}
           <button style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>🔔</button>
         </div>
@@ -3449,8 +3448,8 @@ function StylexAssistant({ user }) {
 
   return (
     <>
-      <button onClick={() => setOpen(o => !o)} style={{ position: "fixed", bottom: 86, right: 20, width: 52, height: 52, borderRadius: "50%", background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", cursor: "pointer", fontSize: 22, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 20px ${GOLD}55`, zIndex: 200 }}>
-        {open ? "✕" : "✨"}
+      <button onClick={() => setOpen(o => !o)} style={{ position: "fixed", bottom: 86, right: 20, width: 52, height: 52, borderRadius: "50%", background: DARK2, border: `1.5px solid ${GOLD}55`, cursor: "pointer", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 20px rgba(0,0,0,0.6)`, zIndex: 200, color: GOLD }}>
+        {open ? "✕" : "💬"}
       </button>
 
       {open && (
@@ -3492,6 +3491,7 @@ function StylexApp() {
   const [viewingPro, setViewingPro] = useState(null);
   const [realPros, setRealPros] = useState([]);
   const [showScanner, setShowScanner] = useState(false);
+  const [showCreatePost, setShowCreatePost] = useState(false);
   const [scannerBookPro, setScannerBookPro] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
   const [showAuth, setShowAuth] = useState(false);
@@ -3724,19 +3724,34 @@ function StylexApp() {
             style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}
           >
             {item.id === "scanner" ? (
-              <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, marginTop: -16, boxShadow: `0 4px 16px ${GOLD}55` }}>✨</div>
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: DARK3, border: `1.5px solid ${GOLD}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, marginTop: -16, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }}>
+                <span style={{ color: GOLD }}>⬡</span>
+              </div>
             ) : (
               <span style={{ fontSize: 22, opacity: activeTab === item.id ? 1 : 0.45 }}>{item.icon}</span>
             )}
             <span style={{ fontSize: 9, color: activeTab === item.id ? GOLD : MUTED, fontWeight: activeTab === item.id ? 700 : 500, letterSpacing: 0.3 }}>{item.label}</span>
           </button>
         ))}
+        {/* Post button for pros — same level as nav icons */}
+        {user && user.type === "professional" && (
+          <button
+            onClick={() => setShowCreatePost(true)}
+            style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}
+          >
+            <span style={{ fontSize: 22, opacity: 0.85 }}>➕</span>
+            <span style={{ fontSize: 9, color: MUTED, fontWeight: 500, letterSpacing: 0.3 }}>Post</span>
+          </button>
+        )}
       </div>
 
       {/* ── Floating AI Assistant ── */}
       <StylexAssistant user={user} />
 
       {/* ── Modals ── */}
+      {showCreatePost && (
+        <CreatePostModal user={user} onClose={() => setShowCreatePost(false)} onPosted={() => { setShowCreatePost(false); setActiveTab("home"); }} />
+      )}
       {showScanner && (
         <AIScannerModal
           onClose={() => { setShowScanner(false); setScannerBookPro(null); }}
