@@ -2429,6 +2429,7 @@ const COUNTRIES = [
 // ─── PROFILE SCREEN (CLIENT) ───
 function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
   const [activeTab, setActiveTab] = useState("bookings");
+  const [settingsPage, setSettingsPage] = useState(null); // "notifications"|"privacy"|"payment"|"language"|"help"
   const [showEdit, setShowEdit] = useState(false);
   const [myAvatar, setMyAvatar] = useState("");
   const [myUsername, setMyUsername] = useState("");
@@ -2469,6 +2470,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
       supabase.from("follows").select("following_id, following_name, following_avatar").eq("follower_id", user.id)
         .then(({ data }) => { setFollowing(data || []); setLoadingTab(false); });
     } else {
+      // saved, settings — no async load needed
       setLoadingTab(false);
     }
   }, [user, activeTab, refreshKey]);
@@ -2522,7 +2524,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
 
       {/* ── Tab Content ── */}
       <div style={{ padding: "20px" }}>
-        {loadingTab && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading...</div>}
+        {loadingTab && activeTab !== "settings" && activeTab !== "saved" && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading...</div>}
 
         {/* Bookings Tab */}
         {!loadingTab && activeTab === "bookings" && (
@@ -2575,64 +2577,172 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
           )
         )}
 
-        {/* Settings Tab */}
-        {activeTab === "settings" && (
+        {/* Settings Tab — always renders instantly */}
+        {activeTab === "settings" && !settingsPage && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button onClick={() => setShowEdit(true)} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
-              <span style={{ fontSize: 22 }}>✏️</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Edit Profile</div>
-                <div style={{ fontSize: 12, color: MUTED }}>Change photo, name, username, bio</div>
-              </div>
-              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
-            </button>
-            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
-              <span style={{ fontSize: 22 }}>🔔</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Notifications</div>
-                <div style={{ fontSize: 12, color: MUTED }}>Manage your alerts</div>
-              </div>
-              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
-            </button>
-            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
-              <span style={{ fontSize: 22 }}>🔒</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Privacy & Security</div>
-                <div style={{ fontSize: 12, color: MUTED }}>Password, account privacy</div>
-              </div>
-              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
-            </button>
-            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
-              <span style={{ fontSize: 22 }}>💳</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Payment Methods</div>
-                <div style={{ fontSize: 12, color: MUTED }}>Cards, bank accounts</div>
-              </div>
-              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
-            </button>
-            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
-              <span style={{ fontSize: 22 }}>🌍</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Language & Region</div>
-                <div style={{ fontSize: 12, color: MUTED }}>Country, currency, language</div>
-              </div>
-              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
-            </button>
-            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
-              <span style={{ fontSize: 22 }}>❓</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Help & Support</div>
-                <div style={{ fontSize: 12, color: MUTED }}>FAQs, contact us</div>
-              </div>
-              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
-            </button>
-            <button onClick={onLogout} style={{ background: `${RED}11`, border: `1px solid ${RED}33`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+            {[
+              { id: "edit", icon: "✏️", label: "Edit Profile", sub: "Change photo, name, username, bio", action: () => setShowEdit(true) },
+              { id: "notifications", icon: "🔔", label: "Notifications", sub: "Booking alerts, messages, promotions" },
+              { id: "privacy", icon: "🔒", label: "Privacy & Security", sub: "Password, account privacy, blocked users" },
+              { id: "payment", icon: "💳", label: "Payment Methods", sub: "Cards, bank accounts, STYLEX wallet" },
+              { id: "language", icon: "🌍", label: "Language & Region", sub: "Country, currency, language" },
+              { id: "help", icon: "❓", label: "Help & Support", sub: "FAQs, contact us, report a problem" },
+            ].map(item => (
+              <button key={item.id} onClick={item.action || (() => setSettingsPage(item.id))} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%" }}>
+                <span style={{ fontSize: 22 }}>{item.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: MUTED }}>{item.sub}</div>
+                </div>
+                <span style={{ color: MUTED, fontSize: 18 }}>›</span>
+              </button>
+            ))}
+            <button onClick={onLogout} style={{ background: `${RED}11`, border: `1px solid ${RED}33`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%" }}>
               <span style={{ fontSize: 22 }}>🚪</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Log Out</div>
                 <div style={{ fontSize: 12, color: MUTED }}>Sign out of your account</div>
               </div>
             </button>
+          </div>
+        )}
+
+        {/* ── NOTIFICATIONS PAGE ── */}
+        {activeTab === "settings" && settingsPage === "notifications" && (
+          <div>
+            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🔔 Notifications</h3>
+            {[
+              { label: "Booking confirmations", sub: "When a booking is confirmed or cancelled", key: "bookings" },
+              { label: "New messages", sub: "Messages from professionals", key: "messages" },
+              { label: "Promotions & offers", sub: "Deals and special offers from STYLEX", key: "promos" },
+              { label: "New followers", sub: "When someone follows you", key: "followers" },
+              { label: "Post likes & comments", sub: "Activity on your posts", key: "activity" },
+              { label: "App updates", sub: "New features and announcements", key: "updates" },
+            ].map(item => {
+              const [on, setOn] = useState(true);
+              return (
+                <div key={item.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: CARD, borderRadius: 14, padding: "14px 16px", marginBottom: 10, border: `1px solid ${BORDER}` }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
+                    <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
+                  </div>
+                  <button onClick={() => setOn(o => !o)} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: on ? GOLD : BORDER, position: "relative", flexShrink: 0 }}>
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: on ? 23 : 3, transition: "left 0.2s" }} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── PRIVACY & SECURITY PAGE ── */}
+        {activeTab === "settings" && settingsPage === "privacy" && (
+          <div>
+            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🔒 Privacy & Security</h3>
+            {[
+              { icon: "🔑", label: "Change Password", sub: "Update your account password" },
+              { icon: "👁️", label: "Profile Visibility", sub: "Control who can see your profile" },
+              { icon: "🚫", label: "Blocked Users", sub: "Manage users you've blocked" },
+              { icon: "📱", label: "Two-Factor Authentication", sub: "Add extra security to your account" },
+              { icon: "🗑️", label: "Delete Account", sub: "Permanently delete your STYLEX account", danger: true },
+            ].map(item => (
+              <button key={item.label} style={{ background: item.danger ? `${RED}11` : CARD, border: `1px solid ${item.danger ? RED + "33" : BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
+                <span style={{ fontSize: 20 }}>{item.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: item.danger ? RED : TEXT }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
+                </div>
+                <span style={{ color: MUTED, fontSize: 18 }}>›</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── PAYMENT METHODS PAGE ── */}
+        {activeTab === "settings" && settingsPage === "payment" && (
+          <div>
+            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>💳 Payment Methods</h3>
+            <div style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 16, marginBottom: 16, textAlign: "center" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: GOLD, marginBottom: 4 }}>STYLEX Wallet</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: TEXT }}>₦0.00</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Available balance</div>
+            </div>
+            {[
+              { icon: "➕", label: "Add Debit/Credit Card", sub: "Visa, Mastercard, Verve" },
+              { icon: "🏦", label: "Add Bank Account", sub: "Link your bank for transfers" },
+              { icon: "📱", label: "Add Mobile Money", sub: "MTN, Airtel, Glo Money" },
+            ].map(item => (
+              <button key={item.label} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
+                <span style={{ fontSize: 20 }}>{item.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
+                </div>
+                <span style={{ color: MUTED, fontSize: 18 }}>›</span>
+              </button>
+            ))}
+            <p style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 8, lineHeight: 1.6 }}>Payments powered by Flutterwave. Your card details are encrypted and secure.</p>
+          </div>
+        )}
+
+        {/* ── LANGUAGE & REGION PAGE ── */}
+        {activeTab === "settings" && settingsPage === "language" && (
+          <div>
+            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>🌍 Language & Region</h3>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>YOUR COUNTRY</label>
+              <select style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none" }}>
+                {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>LANGUAGE</label>
+              <select style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none" }}>
+                {["English", "French", "Arabic", "Swahili", "Yoruba", "Igbo", "Hausa", "Portuguese"].map(l => <option key={l}>{l}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>CURRENCY</label>
+              <select style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none" }}>
+                {["NGN — Nigerian Naira (₦)", "GHS — Ghanaian Cedi", "KES — Kenyan Shilling", "ZAR — South African Rand", "USD — US Dollar ($)", "GBP — British Pound (£)", "EUR — Euro (€)"].map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <GoldBtn style={{ width: "100%", padding: "13px" }}>Save Preferences</GoldBtn>
+          </div>
+        )}
+
+        {/* ── HELP & SUPPORT PAGE ── */}
+        {activeTab === "settings" && settingsPage === "help" && (
+          <div>
+            <button onClick={() => setSettingsPage(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
+            <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>❓ Help & Support</h3>
+            {[
+              { icon: "💬", label: "Contact Support", sub: "Chat with the STYLEX team" },
+              { icon: "📧", label: "Email Us", sub: "support@stylex.app" },
+              { icon: "📖", label: "FAQs", sub: "Frequently asked questions" },
+              { icon: "🐛", label: "Report a Bug", sub: "Something not working? Let us know" },
+              { icon: "⭐", label: "Rate STYLEX", sub: "Enjoying the app? Leave a review" },
+              { icon: "📜", label: "Terms of Service", sub: "Read our terms" },
+              { icon: "🔐", label: "Privacy Policy", sub: "How we handle your data" },
+            ].map(item => (
+              <button key={item.label} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
+                <span style={{ fontSize: 20 }}>{item.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
+                </div>
+                <span style={{ color: MUTED, fontSize: 18 }}>›</span>
+              </button>
+            ))}
+            <div style={{ marginTop: 10, textAlign: "center" }}>
+              <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, color: GOLD, fontFamily: "Georgia, serif" }}>STYLEX</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Version 1.0.0 · Global Beauty Marketplace</div>
+            </div>
           </div>
         )}
       </div>
