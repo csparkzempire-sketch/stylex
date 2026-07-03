@@ -97,6 +97,178 @@ function AdminLogin({ onLogin }) {
   );
 }
 
+// ─── SETTINGS PANEL ───
+function SettingsPanel({ stats, follows, comments, showNotif }) {
+  const [settings, setSettings] = useState({});
+  const [editing, setEditing] = useState({});
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [savingKey, setSavingKey] = useState(null);
+  const [showPass, setShowPass] = useState(false);
+
+  const SETTING_DEFS = [
+    { key: "platform_name", label: "Platform Name", desc: "App display name shown to all users", icon: "✨", type: "text" },
+    { key: "app_url", label: "Live App URL", desc: "Your public production URL", icon: "🌐", type: "text" },
+    { key: "admin_email", label: "Admin Email", desc: "Email used to log into this panel", icon: "📧", type: "email" },
+    { key: "admin_password", label: "Admin Password", desc: "Password used to log into this panel", icon: "🔑", type: "password" },
+    { key: "booking_commission", label: "Booking Commission (%)", desc: "Platform fee charged on every booking", icon: "📅", type: "number", suffix: "%" },
+    { key: "product_commission", label: "Product Commission (%)", desc: "Platform fee on every marketplace sale", icon: "🛍️", type: "number", suffix: "%" },
+    { key: "verification_monthly", label: "Verification Price (Monthly)", desc: "Cost for pros to get verified badge per month", icon: "✅", type: "number", prefix: "₦" },
+    { key: "verification_annually", label: "Verification Price (Annual)", desc: "Cost for pros to get verified badge per year", icon: "✅", type: "number", prefix: "₦" },
+    { key: "boost_monthly", label: "Boost Price (Monthly)", desc: "Cost for pros to boost their profile per month", icon: "🚀", type: "number", prefix: "₦" },
+    { key: "boost_annually", label: "Boost Price (Annual)", desc: "Cost for pros to boost their profile per year", icon: "🚀", type: "number", prefix: "₦" },
+    { key: "supported_countries", label: "Countries Supported", desc: "Number of countries in the global marketplace", icon: "🌍", type: "number" },
+  ];
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    setLoadingSettings(true);
+    const { data } = await supabase.from("platform_settings").select("*");
+    if (data) {
+      const map = {};
+      data.forEach(row => { map[row.key] = row.value; });
+      setSettings(map);
+      // init editing values
+      const editMap = {};
+      data.forEach(row => { editMap[row.key] = row.value; });
+      setEditing(editMap);
+    }
+    setLoadingSettings(false);
+  };
+
+  const saveSetting = async (key) => {
+    const newVal = editing[key];
+    if (newVal === settings[key]) return; // nothing changed
+    setSavingKey(key);
+    const { error } = await supabase.from("platform_settings")
+      .upsert({ key, value: newVal, updated_at: new Date().toISOString() });
+    setSavingKey(null);
+    if (error) { showNotif("Failed to save: " + error.message, "error"); return; }
+    setSettings(s => ({ ...s, [key]: newVal }));
+    showNotif(`${SETTING_DEFS.find(d => d.key === key)?.label} updated ✅`);
+  };
+
+  const inputStyle = {
+    flex: 1,
+    background: DARK3,
+    border: `1px solid ${BORDER}`,
+    borderRadius: 9,
+    padding: "9px 12px",
+    color: TEXT,
+    fontSize: 13,
+    outline: "none",
+    minWidth: 0,
+  };
+
+  if (loadingSettings) return <div style={{ textAlign: "center", padding: 60, color: MUTED }}>Loading settings...</div>;
+
+  return (
+    <div style={{ maxWidth: 720 }}>
+      <div style={{ background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 12, padding: "12px 16px", marginBottom: 22, display: "flex", gap: 10, alignItems: "center" }}>
+        <span style={{ fontSize: 18 }}>💡</span>
+        <span style={{ fontSize: 13, color: `${GOLD}cc`, lineHeight: 1.5 }}>Changes save instantly to the database and take effect across the live app. Edit a field and click <strong>Save</strong> to apply.</span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+        {SETTING_DEFS.map(def => (
+          <div key={def.key} style={{ background: CARD, borderRadius: 14, padding: "18px 20px", border: `1px solid ${BORDER}` }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 200 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontSize: 16 }}>{def.icon}</span>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{def.label}</div>
+                </div>
+                <div style={{ fontSize: 12, color: MUTED, paddingLeft: 24 }}>{def.desc}</div>
+                {settings[def.key] !== editing[def.key] && (
+                  <div style={{ fontSize: 11, color: GOLD, marginTop: 4, paddingLeft: 24 }}>
+                    Current: <span style={{ fontFamily: def.type === "password" ? "monospace" : "inherit" }}>
+                      {def.type === "password" ? "••••••••" : (def.prefix || "") + settings[def.key] + (def.suffix || "")}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flex: 1, minWidth: 260 }}>
+                {def.prefix && <span style={{ color: GOLD, fontWeight: 700, fontSize: 14 }}>{def.prefix}</span>}
+                <div style={{ flex: 1, position: "relative" }}>
+                  <input
+                    type={def.type === "password" ? (showPass ? "text" : "password") : def.type}
+                    value={editing[def.key] || ""}
+                    onChange={e => setEditing(ed => ({ ...ed, [def.key]: e.target.value }))}
+                    onKeyDown={e => e.key === "Enter" && saveSetting(def.key)}
+                    style={{ ...inputStyle, paddingRight: def.type === "password" ? 38 : 12 }}
+                  />
+                  {def.type === "password" && (
+                    <button onClick={() => setShowPass(s => !s)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 14 }}>{showPass ? "🙈" : "👁️"}</button>
+                  )}
+                </div>
+                {def.suffix && <span style={{ color: MUTED, fontSize: 13 }}>{def.suffix}</span>}
+                <button
+                  onClick={() => saveSetting(def.key)}
+                  disabled={savingKey === def.key || editing[def.key] === settings[def.key]}
+                  style={{
+                    background: editing[def.key] !== settings[def.key] ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3,
+                    border: "none",
+                    borderRadius: 9,
+                    color: editing[def.key] !== settings[def.key] ? "#0A0A0B" : MUTED,
+                    padding: "9px 18px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: editing[def.key] !== settings[def.key] ? "pointer" : "not-allowed",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  {savingKey === def.key ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Read-only info */}
+      <div style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "18px 20px", marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: MUTED, letterSpacing: 1, marginBottom: 12 }}>READ-ONLY INFO</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[
+            { label: "Database (Supabase)", value: "utvrujgqzheifblizarw", mono: true },
+            { label: "App Version", value: "1.0.0" },
+          ].map((s, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: MUTED }}>{s.label}</span>
+              <span style={{ fontSize: 13, color: TEXT, fontWeight: 600, fontFamily: s.mono ? "monospace" : "inherit" }}>{s.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Live platform summary */}
+      <div style={{ background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 20 }}>
+        <div style={{ fontWeight: 800, fontSize: 15, color: GOLD, marginBottom: 14 }}>📊 Live Platform Summary</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {[
+            { label: "Total Users", value: stats.users },
+            { label: "Professionals", value: stats.professionals },
+            { label: "Total Posts", value: stats.posts },
+            { label: "Total Bookings", value: stats.bookings },
+            { label: "Products Listed", value: stats.products },
+            { label: "Collab Requests", value: stats.collabs },
+            { label: "Total Follows", value: follows.length },
+            { label: "Total Comments", value: comments.length },
+          ].map((s, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: DARK3, borderRadius: 9 }}>
+              <span style={{ fontSize: 12, color: MUTED }}>{s.label}</span>
+              <span style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>{s.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN PANEL ───
 function AdminPanel({ onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -808,52 +980,7 @@ function AdminPanel({ onLogout }) {
 
           {/* ════════════════ SETTINGS ════════════════ */}
           {!loading && activeTab === "settings" && (
-            <div style={{ maxWidth: 680 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {[
-                  { title: "Platform Name", desc: "App display name", value: "STYLEX" },
-                  { title: "Live App URL", desc: "Public production URL", value: "stylex-mauve.vercel.app" },
-                  { title: "Admin Email", desc: "Founder login", value: ADMIN_EMAIL },
-                  { title: "Database", desc: "Supabase project ref", value: "utvrujgqzheifblizarw" },
-                  { title: "Booking Commission", desc: "Platform fee on every booking", value: "20%" },
-                  { title: "Product Commission", desc: "Platform fee on marketplace sales", value: "5%" },
-                  { title: "Verification Plan (Monthly)", desc: "Cost to get verified badge", value: "₦2,500/mo" },
-                  { title: "Boost Plan (Monthly)", desc: "Cost to boost profile", value: "₦5,000/mo" },
-                  { title: "Countries Supported", desc: "Global marketplace reach", value: "20 countries" },
-                  { title: "Version", desc: "Current app version", value: "1.0.0" },
-                ].map((s, i) => (
-                  <div key={i} style={{ background: CARD, borderRadius: 12, padding: "16px 20px", border: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 3 }}>{s.title}</div>
-                      <div style={{ fontSize: 12, color: MUTED }}>{s.desc}</div>
-                    </div>
-                    <span style={{ fontSize: 13, color: GOLD, fontWeight: 700, fontFamily: s.title === "Database" ? "monospace" : "inherit" }}>{s.value}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Platform stats summary */}
-              <div style={{ background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 20, marginTop: 20 }}>
-                <div style={{ fontWeight: 800, fontSize: 15, color: GOLD, marginBottom: 14 }}>📊 Live Platform Summary</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  {[
-                    { label: "Total Users", value: stats.users },
-                    { label: "Professionals", value: stats.professionals },
-                    { label: "Total Posts", value: stats.posts },
-                    { label: "Total Bookings", value: stats.bookings },
-                    { label: "Products Listed", value: stats.products },
-                    { label: "Collab Requests", value: stats.collabs },
-                    { label: "Total Follows", value: follows.length },
-                    { label: "Total Comments", value: comments.length },
-                  ].map((s, i) => (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: DARK3, borderRadius: 9 }}>
-                      <span style={{ fontSize: 12, color: MUTED }}>{s.label}</span>
-                      <span style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>{s.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <SettingsPanel stats={stats} follows={follows} comments={comments} showNotif={showNotif} />
           )}
 
         </div>
