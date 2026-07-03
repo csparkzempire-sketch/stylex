@@ -3857,37 +3857,51 @@ function StylexApp() {
         )
       )}
 
-      {/* ── Bottom Navigation (TikTok-style) ── */}
+      {/* ── Bottom Navigation ── */}
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: `${DARK}f5`, backdropFilter: "blur(16px)", borderTop: `1px solid ${BORDER}`, display: "flex", zIndex: 300, padding: "6px 0 8px" }}>
-        {navItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => {
-              if (item.id === "scanner") { setShowScanner(true); return; }
-              setActiveTab(item.id);
-            }}
-            style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}
-          >
-            {item.id === "scanner" ? (
-              <div style={{ width: 44, height: 44, borderRadius: 14, background: DARK3, border: `1.5px solid ${GOLD}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, marginTop: -16, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }}>
-                🤖
-              </div>
-            ) : (
-              <span style={{ fontSize: 22, opacity: activeTab === item.id ? 1 : 0.45 }}>{item.icon}</span>
-            )}
-            <span style={{ fontSize: 9, color: activeTab === item.id ? GOLD : MUTED, fontWeight: activeTab === item.id ? 700 : 500, letterSpacing: 0.3 }}>{item.label}</span>
-          </button>
-        ))}
-        {/* Post button for pros — same level as nav icons */}
-        {user && user.type === "professional" && (
-          <button
-            onClick={() => setShowCreatePost(true)}
-            style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}
-          >
+
+        {/* Home */}
+        <button onClick={() => setActiveTab("home")} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
+          <span style={{ fontSize: 22, opacity: activeTab === "home" ? 1 : 0.45 }}>🏠</span>
+          <span style={{ fontSize: 9, color: activeTab === "home" ? GOLD : MUTED, fontWeight: activeTab === "home" ? 700 : 500, letterSpacing: 0.3 }}>Home</span>
+        </button>
+
+        {/* Explore */}
+        <button onClick={() => setActiveTab("explore")} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
+          <span style={{ fontSize: 22, opacity: activeTab === "explore" ? 1 : 0.45 }}>🔍</span>
+          <span style={{ fontSize: 9, color: activeTab === "explore" ? GOLD : MUTED, fontWeight: activeTab === "explore" ? 700 : 500, letterSpacing: 0.3 }}>Explore</span>
+        </button>
+
+        {/* Post (pros only) or Scan placeholder for clients */}
+        {user && user.type === "professional" ? (
+          <button onClick={() => setShowCreatePost(true)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
             <span style={{ fontSize: 22, opacity: 0.85 }}>➕</span>
             <span style={{ fontSize: 9, color: MUTED, fontWeight: 500, letterSpacing: 0.3 }}>Post</span>
           </button>
+        ) : (
+          <div style={{ flex: 1 }} />
         )}
+
+        {/* Scan / AI */}
+        <button onClick={() => setShowScanner(true)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: DARK3, border: `1.5px solid ${GOLD}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, marginTop: -16, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }}>
+            🤖
+          </div>
+          <span style={{ fontSize: 9, color: MUTED, fontWeight: 500, letterSpacing: 0.3 }}>Scan</span>
+        </button>
+
+        {/* Shop */}
+        <button onClick={() => setActiveTab("marketplace")} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
+          <span style={{ fontSize: 22, opacity: activeTab === "marketplace" ? 1 : 0.45 }}>🛍️</span>
+          <span style={{ fontSize: 9, color: activeTab === "marketplace" ? GOLD : MUTED, fontWeight: activeTab === "marketplace" ? 700 : 500, letterSpacing: 0.3 }}>Shop</span>
+        </button>
+
+        {/* Profile */}
+        <button onClick={() => setActiveTab("profile")} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
+          <span style={{ fontSize: 22, opacity: activeTab === "profile" ? 1 : 0.45 }}>👤</span>
+          <span style={{ fontSize: 9, color: activeTab === "profile" ? GOLD : MUTED, fontWeight: activeTab === "profile" ? 700 : 500, letterSpacing: 0.3 }}>Profile</span>
+        </button>
+
       </div>
 
       {/* ── Floating AI Assistant ── */}
