@@ -3724,8 +3724,8 @@ function StylexApp() {
             style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}
           >
             {item.id === "scanner" ? (
-              <div style={{ width: 44, height: 44, borderRadius: 14, background: DARK3, border: `1.5px solid ${GOLD}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, marginTop: -16, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }}>
-                <span style={{ color: GOLD }}>⬡</span>
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: DARK3, border: `1.5px solid ${GOLD}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, marginTop: -16, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }}>
+                <span style={{ color: GOLD, fontSize: 16, fontWeight: 900, fontFamily: "Georgia, serif", letterSpacing: -1 }}>AI</span>
               </div>
             ) : (
               <span style={{ fontSize: 22, opacity: activeTab === item.id ? 1 : 0.45 }}>{item.icon}</span>
