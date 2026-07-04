@@ -20,7 +20,45 @@ const MUTED = "#888898";
 const GREEN = "#4CAF50";
 const RED = "#FF5555";
 
-// ─── COMMISSION ───
+// ─── FLUTTERWAVE PAYMENT HELPER ───
+function openFlutterwaveCheckout({ amount, email, name, phone, txRef, meta, onSuccess, onClose }) {
+  if (!window.FlutterwaveCheckout) {
+    alert("Payment system loading... please try again in a moment.");
+    return;
+  }
+  window.FlutterwaveCheckout({
+    public_key: process.env.REACT_APP_FLW_PUBLIC_KEY,
+    tx_ref: txRef,
+    amount,
+    currency: "NGN",
+    payment_options: "card,banktransfer,ussd,mobilemoney",
+    customer: { email, name, phone_number: phone || "" },
+    customizations: {
+      title: "STYLEX",
+      description: meta?.description || "Payment",
+      logo: "https://stylex-mauve.vercel.app/logo192.png",
+    },
+    callback: async (response) => {
+      if (response.status === "successful") {
+        try {
+          const res = await fetch("/api/flw-verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tx_ref: response.tx_ref, tx_id: response.transaction_id, type: meta?.type, meta }),
+          });
+          const data = await res.json();
+          if (data.success) onSuccess(response);
+          else alert("Payment verified but activation failed. Contact support with ref: " + txRef);
+        } catch (e) {
+          alert("Could not verify payment. Contact support with ref: " + txRef);
+        }
+      }
+    },
+    onclose: () => { if (onClose) onClose(); },
+  });
+}
+
+
 const PRODUCT_COMMISSION_RATE = 0.05; // 5% on every product sold
 
 // ─── DEMO DATA ───
@@ -431,30 +469,29 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
   const price = PRICING[planType][billing];
 
   const handleSubscribe = async () => {
+    if (!user) { alert("Please sign in first."); return; }
     setSaving(true);
-    const now = new Date();
-    const expires = new Date(now);
-    if (billing === "monthly") expires.setMonth(expires.getMonth() + 1);
-    else expires.setFullYear(expires.getFullYear() + 1);
+    const ref = "SX-SUB-" + Math.random().toString(36).substr(2, 8).toUpperCase();
 
-    const updates = {};
-    if (planType === "verification") {
-      updates.is_verified = true;
-      updates.verification_plan = billing;
-      updates.verification_expires = expires.toISOString();
-    } else {
-      updates.is_boosted = true;
-      updates.boost_plan = billing;
-      updates.boost_expires = expires.toISOString();
-    }
-
-    const { error } = await supabase.from("profiles").update(updates).eq("id", user.id);
-    setSaving(false);
-    if (!error) {
-      setDone(true);
-      if (onUpdated) onUpdated();
-      setTimeout(() => { setDone(false); onClose(); }, 2200);
-    }
+    openFlutterwaveCheckout({
+      amount: price,
+      email: user.email,
+      name: user.name,
+      txRef: ref,
+      meta: {
+        type: planType,
+        user_id: user.id,
+        billing,
+        description: `STYLEX ${planType} ${billing} plan`,
+      },
+      onSuccess: () => {
+        setSaving(false);
+        setDone(true);
+        if (onUpdated) onUpdated();
+        setTimeout(() => { setDone(false); onClose(); }, 2200);
+      },
+      onClose: () => setSaving(false),
+    });
   };
 
   if (done) {
@@ -524,10 +561,10 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
       </div>
 
       <GoldBtn onClick={handleSubscribe} disabled={saving} style={{ width: "100%", padding: "14px" }}>
-        {saving ? "Processing..." : `Subscribe • ₦${price.toLocaleString()}`}
+        {saving ? "Opening payment..." : `Pay ₦${price.toLocaleString()} 💳`}
       </GoldBtn>
       <p style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-        Payment via Flutterwave (coming soon). Your plan activates immediately for now.
+        Secure payment via Flutterwave. Your plan activates immediately after payment.
       </p>
     </Modal>
   );
@@ -705,6 +742,8 @@ function BookingModal({ pro, onClose, user }) {
   const [payMethod, setPayMethod] = useState("flutterwave");
   const [serviceType, setServiceType] = useState(pro.offersShop ? "shop" : "mobile");
   const [bookingRef, setBookingRef] = useState("");
+  const [paying, setPaying] = useState(false);
+  const [bookingId, setBookingId] = useState(null);
 
   const today = new Date();
   const days = Array.from({ length: 14 }, (_, i) => { const d = new Date(today); d.setDate(today.getDate() + i); return d; });
@@ -715,22 +754,43 @@ function BookingModal({ pro, onClose, user }) {
   const totalPrice = servicePrice + commission;
 
   const handleConfirmBooking = async () => {
+    if (!user) { alert("Please sign in to book."); return; }
+    setPaying(true);
     const ref = "SX-" + Math.random().toString(36).substr(2, 6).toUpperCase();
     setBookingRef(ref);
 
-    if (user) {
-      await supabase.from("bookings").insert({
-        client_id: user.id,
-        service: pro.tags[selectedService],
-        service_type: serviceType,
-        date: days[selectedDate]?.toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" }),
-        time: selectedTime,
-        price: totalPrice,
-        status: "confirmed",
-        reference: ref
-      });
-    }
-    setStep(4);
+    // Save booking with pending payment status
+    const { data: inserted } = await supabase.from("bookings").insert({
+      client_id: user.id,
+      service: pro.tags[selectedService],
+      service_type: serviceType,
+      date: days[selectedDate]?.toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" }),
+      time: selectedTime,
+      price: totalPrice,
+      status: "pending",
+      payment_status: "pending",
+      reference: ref,
+    }).select().maybeSingle();
+
+    const bId = inserted?.id || null;
+    setBookingId(bId);
+    setPaying(false);
+
+    // Open Flutterwave checkout
+    openFlutterwaveCheckout({
+      amount: totalPrice,
+      email: user.email,
+      name: user.name,
+      txRef: ref,
+      meta: {
+        type: "booking",
+        booking_id: bId,
+        user_id: user.id,
+        description: `${pro.tags[selectedService]} with ${pro.name}`,
+      },
+      onSuccess: () => setStep(4),
+      onClose: () => setPaying(false),
+    });
   };
 
   return (
@@ -851,7 +911,7 @@ function BookingModal({ pro, onClose, user }) {
 
           <div style={{ display: "flex", gap: 10 }}>
             <GoldBtn onClick={() => setStep(2)} outline style={{ flex: 1 }}>← Back</GoldBtn>
-            <GoldBtn onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm Booking ✅</GoldBtn>
+            <GoldBtn onClick={handleConfirmBooking} disabled={paying} style={{ flex: 2 }}>{paying ? "Processing..." : `Pay ₦${totalPrice.toLocaleString()} 💳`}</GoldBtn>
           </div>
         </div>
       )}
@@ -1473,7 +1533,7 @@ function MarketplaceScreen({ user, onLogin }) {
                 <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>by {p.seller_name}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontWeight: 800, fontSize: 15, color: GOLD }}>₦{p.price?.toLocaleString()}</span>
-                  <button style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Buy</button>
+                  <button onClick={() => { if (!user) { alert("Please sign in to buy."); return; } const ref = "SX-PROD-" + Math.random().toString(36).substr(2, 8).toUpperCase(); openFlutterwaveCheckout({ amount: p.price, email: user.email, name: user.name, txRef: ref, meta: { type: "product", product_id: p.id, user_id: user.id, description: p.name }, onSuccess: () => alert("✅ Purchase successful! The seller will contact you shortly."), onClose: () => {}, }); }} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Buy</button>
                 </div>
               </div>
             </div>
@@ -3643,6 +3703,17 @@ function StylexApp() {
   const [profileRefresh, setProfileRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedCountry, setSelectedCountry] = useState("ALL");
+
+  // Load Flutterwave checkout script
+  useEffect(() => {
+    if (!document.getElementById("flw-script")) {
+      const script = document.createElement("script");
+      script.id = "flw-script";
+      script.src = "https://checkout.flutterwave.com/v3.js";
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   // Load real professionals from Supabase
   const loadPros = async () => {
