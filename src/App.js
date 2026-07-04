@@ -2891,28 +2891,170 @@ function LanguageSettingsPage({ user, onBack }) {
 }
 
 // ─── HELP & SUPPORT PAGE ───
-function HelpSupportPage({ onBack }) {
+function HelpSupportPage({ onBack, user }) {
   const [activeFaq, setActiveFaq] = useState(null);
+  const [activeSection, setActiveSection] = useState(null); // "contact" | "bug" | "rate"
+  const [formMsg, setFormMsg] = useState("");
+  const [formName, setFormName] = useState(user?.name || "");
+  const [formEmail, setFormEmail] = useState(user?.email || "");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [ratingMsg, setRatingMsg] = useState("");
+  const [ratingDone, setRatingDone] = useState(false);
+
   const FAQS = [
-    { q: "How do I book a professional?", a: "Go to Explore, find a professional you like, tap their profile and click 'Book Now'. Choose your date, time and service." },
+    { q: "How do I book a professional?", a: "Go to Explore, find a professional you like, tap their profile and click 'Book Now'. Choose your date, time and service, then pay securely via Flutterwave." },
     { q: "How do payments work?", a: "Payments are processed securely via Flutterwave. A 20% platform fee applies to all bookings. You can pay by card, bank transfer or USSD." },
-    { q: "How do I become a verified professional?", a: "Go to your profile → Settings → Verification & Boost. A gold verified badge costs ₦2,500/month and increases client trust." },
-    { q: "Can I cancel a booking?", a: "Yes. Go to your Bookings tab, find the booking and tap Cancel. Cancellation policies vary by professional." },
-    { q: "How do I report a user?", a: "On any profile, tap the options menu and select 'Report'. Our team reviews all reports within 24 hours." },
+    { q: "How do I become a verified professional?", a: "Go to your profile → Settings → Verification & Boost. A gold verified badge costs ₦2,500/month and increases client trust significantly." },
+    { q: "Can I cancel a booking?", a: "Yes. Go to your Bookings tab, find the booking and contact the professional directly via Messages to cancel and arrange a refund." },
+    { q: "How do I message a professional?", a: "Go to any professional's profile and tap the 💬 Message button. You can also start chats from the Messages tab in the bottom nav." },
+    { q: "How does the AI Scanner work?", a: "Tap the 🤖 button in the nav. Allow camera access, choose what to scan (face, hair, nails or skin), take a photo and our AI will recommend styles and matching professionals." },
+    { q: "How do I report a user?", a: "Go to Privacy & Security in Settings → this feature sends a report to our team. We review all reports within 24 hours." },
     { q: "Is STYLEX available in my country?", a: "STYLEX is a global beauty marketplace available in 20+ countries. Use the country filter in Explore to find professionals near you." },
+    { q: "How do I sell products on STYLEX?", a: "Go to the Shop tab and tap '➕ Sell a Product'. Fill in your product details and list it. STYLEX takes a 5% commission on each sale." },
   ];
+
+  const sendSupportMessage = async (subject) => {
+    if (!formMsg.trim()) return;
+    setSending(true);
+    try {
+      await fetch("/api/collab-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: `${subject} — ${formName || "Anonymous"}`,
+          contact_email: formEmail || "no-email@stylex.pro",
+          request_type: "collaboration",
+          message: `FROM: ${formName} (${formEmail})\n\n${formMsg}`,
+        }),
+      });
+      setSent(true);
+      setFormMsg("");
+      setTimeout(() => { setSent(false); setActiveSection(null); }, 2500);
+    } catch (e) {
+      alert("Something went wrong. Please try again.");
+    }
+    setSending(false);
+  };
+
+  const submitRating = async () => {
+    if (rating === 0) return;
+    setSending(true);
+    try {
+      await fetch("/api/collab-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: `App Rating — ${rating} stars from ${formName || "Anonymous"}`,
+          contact_email: formEmail || "no-email@stylex.pro",
+          request_type: "collaboration",
+          message: `Rating: ${"⭐".repeat(rating)}\n\nFeedback: ${ratingMsg || "No comment"}`,
+        }),
+      });
+      setRatingDone(true);
+      setTimeout(() => { setRatingDone(false); setActiveSection(null); setRating(0); setRatingMsg(""); }, 2500);
+    } catch (e) {
+      alert("Something went wrong.");
+    }
+    setSending(false);
+  };
+
+  const inputStyle = { width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "11px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 12 };
+
+  // Sub-pages
+  if (activeSection === "contact") return (
+    <div>
+      <button onClick={() => setActiveSection(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 6 }}>💬 Contact Support</h3>
+      <p style={{ color: MUTED, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>Our team usually responds within 24 hours.</p>
+      {sent ? (
+        <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 14, padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: GREEN }}>Message Sent!</div>
+          <div style={{ fontSize: 13, color: MUTED, marginTop: 6 }}>We'll get back to you at {formEmail}</div>
+        </div>
+      ) : (
+        <div>
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>YOUR NAME</label>
+          <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Your name" style={inputStyle} />
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>YOUR EMAIL</label>
+          <input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="your@email.com" style={inputStyle} />
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>YOUR MESSAGE</label>
+          <textarea value={formMsg} onChange={e => setFormMsg(e.target.value)} placeholder="How can we help you?" rows={5} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+          <button onClick={() => sendSupportMessage("Support Request")} disabled={sending || !formMsg.trim()} style={{ width: "100%", background: formMsg.trim() ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3, border: "none", borderRadius: 12, color: formMsg.trim() ? "#0A0A0B" : MUTED, padding: "13px", fontSize: 14, fontWeight: 700, cursor: formMsg.trim() ? "pointer" : "not-allowed" }}>
+            {sending ? "Sending..." : "Send Message 📨"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  if (activeSection === "bug") return (
+    <div>
+      <button onClick={() => setActiveSection(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 6 }}>🐛 Report a Bug</h3>
+      <p style={{ color: MUTED, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>Tell us exactly what happened and we'll fix it fast.</p>
+      {sent ? (
+        <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 14, padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: GREEN }}>Bug Reported!</div>
+          <div style={{ fontSize: 13, color: MUTED, marginTop: 6 }}>Thank you — we'll investigate and fix it.</div>
+        </div>
+      ) : (
+        <div>
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>YOUR EMAIL (for updates)</label>
+          <input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="your@email.com" style={inputStyle} />
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>DESCRIBE THE BUG</label>
+          <textarea value={formMsg} onChange={e => setFormMsg(e.target.value)} placeholder="What happened? What were you trying to do? What did you expect to happen?" rows={6} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+          <button onClick={() => sendSupportMessage("Bug Report")} disabled={sending || !formMsg.trim()} style={{ width: "100%", background: formMsg.trim() ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3, border: "none", borderRadius: 12, color: formMsg.trim() ? "#0A0A0B" : MUTED, padding: "13px", fontSize: 14, fontWeight: 700, cursor: formMsg.trim() ? "pointer" : "not-allowed" }}>
+            {sending ? "Sending..." : "Report Bug 🐛"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  if (activeSection === "rate") return (
+    <div>
+      <button onClick={() => setActiveSection(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 6 }}>⭐ Rate STYLEX</h3>
+      <p style={{ color: MUTED, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>Your feedback helps us improve for everyone.</p>
+      {ratingDone ? (
+        <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 14, padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>🎉</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: GREEN }}>Thank you!</div>
+          <div style={{ fontSize: 13, color: MUTED, marginTop: 6 }}>Your rating helps us grow. We appreciate it!</div>
+        </div>
+      ) : (
+        <div>
+          <div style={{ textAlign: "center", marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 10 }}>
+              {[1, 2, 3, 4, 5].map(s => (
+                <button key={s} onClick={() => setRating(s)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 40, color: s <= rating ? GOLD : BORDER, padding: 0 }}>★</button>
+              ))}
+            </div>
+            {rating > 0 && <div style={{ fontSize: 14, color: GOLD, fontWeight: 700 }}>{["", "Poor", "Fair", "Good", "Great", "Excellent! 🎉"][rating]}</div>}
+          </div>
+          <textarea value={ratingMsg} onChange={e => setRatingMsg(e.target.value)} placeholder="Any feedback or suggestions? (optional)" rows={4} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+          <button onClick={submitRating} disabled={sending || rating === 0} style={{ width: "100%", background: rating > 0 ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3, border: "none", borderRadius: 12, color: rating > 0 ? "#0A0A0B" : MUTED, padding: "13px", fontSize: 14, fontWeight: 700, cursor: rating > 0 ? "pointer" : "not-allowed" }}>
+            {sending ? "Submitting..." : "Submit Rating ⭐"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div>
       <button onClick={onBack} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back to Settings</button>
       <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 16 }}>❓ Help & Support</h3>
 
-      {/* Contact options */}
       {[
-        { icon: "💬", label: "Contact Support", sub: "Chat with the STYLEX team", action: () => window.open("mailto:support@stylex.app") },
-        { icon: "📧", label: "Email Us", sub: "support@stylex.app", action: () => window.open("mailto:support@stylex.app") },
-        { icon: "🐛", label: "Report a Bug", sub: "Something not working? Let us know", action: () => window.open("mailto:bugs@stylex.app?subject=Bug Report") },
-        { icon: "⭐", label: "Rate STYLEX", sub: "Enjoying the app? Leave a review", action: () => {} },
+        { icon: "💬", label: "Contact Support", sub: "Send us a message — we reply within 24 hours", action: () => setActiveSection("contact") },
+        { icon: "🐛", label: "Report a Bug", sub: "Something not working? Tell us and we'll fix it", action: () => setActiveSection("bug") },
+        { icon: "⭐", label: "Rate STYLEX", sub: "Enjoying the app? Share your feedback", action: () => setActiveSection("rate") },
+        { icon: "📧", label: "Email Us Directly", sub: "support@stylex.pro", action: () => { setFormMsg(""); setActiveSection("contact"); } },
       ].map(item => (
         <button key={item.label} onClick={item.action} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
           <span style={{ fontSize: 20 }}>{item.icon}</span>
@@ -2924,7 +3066,6 @@ function HelpSupportPage({ onBack }) {
         </button>
       ))}
 
-      {/* FAQs */}
       <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, margin: "20px 0 12px" }}>📖 Frequently Asked Questions</div>
       {FAQS.map((faq, i) => (
         <div key={i} style={{ background: CARD, border: `1px solid ${activeFaq === i ? GOLD + "55" : BORDER}`, borderRadius: 14, marginBottom: 10, overflow: "hidden" }}>
@@ -2932,13 +3073,10 @@ function HelpSupportPage({ onBack }) {
             <span style={{ fontSize: 13, fontWeight: 600, color: TEXT, flex: 1, paddingRight: 10 }}>{faq.q}</span>
             <span style={{ color: GOLD, fontSize: 16, flexShrink: 0 }}>{activeFaq === i ? "▲" : "▼"}</span>
           </button>
-          {activeFaq === i && (
-            <div style={{ padding: "0 16px 14px", fontSize: 13, color: MUTED, lineHeight: 1.7 }}>{faq.a}</div>
-          )}
+          {activeFaq === i && <div style={{ padding: "0 16px 14px", fontSize: 13, color: MUTED, lineHeight: 1.7 }}>{faq.a}</div>}
         </div>
       ))}
 
-      {/* Legal links */}
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
         <button style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px", cursor: "pointer", fontSize: 12, color: MUTED, fontWeight: 600 }}>📜 Terms of Service</button>
         <button style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px", cursor: "pointer", fontSize: 12, color: MUTED, fontWeight: 600 }}>🔐 Privacy Policy</button>
@@ -3182,7 +3320,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
 
         {/* ── HELP & SUPPORT PAGE ── */}
         {activeTab === "settings" && settingsPage === "help" && (
-          <HelpSupportPage onBack={() => setSettingsPage(null)} />
+          <HelpSupportPage onBack={() => setSettingsPage(null)} user={user} />
         )}
       </div>
 
