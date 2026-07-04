@@ -1936,9 +1936,17 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
     return all.find(p => p.id === "db-" + post.pro_id || p.name === post.pro_name);
   };
 
-  const realFiltered = activeCategory === "All"
+  const realFiltered = (activeCategory === "All"
     ? posts
-    : posts.filter(p => (p.category || "").toLowerCase().includes(activeCategory.toLowerCase()));
+    : posts.filter(p => (p.category || "").toLowerCase().includes(activeCategory.toLowerCase()))
+  ).sort((a, b) => {
+    // Posts from boosted pros appear first
+    const proA = findPro(a);
+    const proB = findPro(b);
+    const aBoosted = proA?.boosted ? 1 : 0;
+    const bBoosted = proB?.boosted ? 1 : 0;
+    return bBoosted - aBoosted;
+  });
 
   const demoFiltered = activeCategory === "All" ? feedVideos : feedVideos.filter(f => f.pro.category.toLowerCase().includes(activeCategory.toLowerCase()));
   const showDemo = posts.length === 0;
@@ -1977,8 +1985,15 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
 
         {realFiltered.map((post) => {
           const pro = findPro(post);
+          const isBoostedPost = pro?.boosted;
           return (
-            <div key={post.id} style={{ borderRadius: 20, overflow: "hidden", marginBottom: 20, border: `1px solid ${BORDER}` }}>
+            <div key={post.id} style={{ borderRadius: 20, overflow: "hidden", marginBottom: 20, border: `1px solid ${isBoostedPost ? GOLD + "55" : BORDER}` }}>
+              {isBoostedPost && (
+                <div style={{ background: `linear-gradient(90deg, ${GOLD}22, ${DARK3})`, padding: "5px 14px", display: "flex", alignItems: "center", gap: 6, borderBottom: `1px solid ${GOLD}33` }}>
+                  <span style={{ fontSize: 10 }}>🚀</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: GOLD, letterSpacing: 1 }}>FEATURED</span>
+                </div>
+              )}
               <div style={{ position: "relative", cursor: pro ? "pointer" : "default", background: "#000" }} onClick={() => pro && onProfile(pro)}>
                 {post.media_type === "video" ? (
                   <video src={post.media_url} controls playsInline style={{ width: "100%", maxHeight: 420, display: "block", background: "#000" }} />
@@ -2074,6 +2089,66 @@ function ExploreScreen({ onProfile, user, realPros = [] }) {
     return matchCat && matchSearch;
   });
 
+  // Boosted pros go first, then verified, then rest
+  const sorted = [...filtered].sort((a, b) => {
+    if (a.boosted && !b.boosted) return -1;
+    if (!a.boosted && b.boosted) return 1;
+    if (a.verified && !b.verified) return -1;
+    if (!a.verified && b.verified) return 1;
+    return 0;
+  });
+
+  const boostedPros = sorted.filter(p => p.boosted);
+  const regularPros = sorted.filter(p => !p.boosted);
+
+  const ProCard = ({ pro }) => (
+    <div key={pro.id} style={{ background: CARD, borderRadius: 18, border: `1px solid ${pro.boosted ? GOLD + "55" : BORDER}`, overflow: "hidden", position: "relative" }}>
+      {/* Boosted featured banner */}
+      {pro.boosted && (
+        <div style={{ background: `linear-gradient(90deg, ${GOLD}, ${GOLD_LIGHT})`, padding: "5px 14px", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11 }}>🚀</span>
+          <span style={{ fontSize: 10, fontWeight: 800, color: "#0A0A0B", letterSpacing: 1 }}>FEATURED</span>
+        </div>
+      )}
+      {!pro.boosted && <div style={{ height: 4, background: `linear-gradient(90deg, ${pro.color}, ${pro.color}44)` }} />}
+      <div style={{ padding: "18px 18px 14px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 12 }}>
+          <Avatar initials={pro.avatar} size={52} color={pro.color} img={pro.avatarUrl} />
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{ fontWeight: 800, fontSize: 15, color: TEXT }}>{pro.name}</span>
+              <VerifiedBadge verified={pro.verified} size={15} />
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>{pro.handle}</div>
+            <Badge text={pro.category} color={pro.color} />
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>₦{(pro.shopPrice || pro.mobilePrice || 0).toLocaleString()}</div>
+            <div style={{ fontSize: 10, color: MUTED }}>from</div>
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: `${TEXT}99`, margin: "0 0 10px", lineHeight: 1.6 }}>{pro.bio}</p>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+          {pro.tags.map(tag => <span key={tag} style={{ fontSize: 10, color: pro.color, background: `${pro.color}15`, border: `1px solid ${pro.color}33`, borderRadius: 4, padding: "2px 8px" }}>{tag}</span>)}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `1px solid ${BORDER}`, paddingTop: 10, marginBottom: 12 }}>
+          <div>
+            <span style={{ color: GOLD, fontSize: 12 }}>{"★".repeat(Math.round(pro.rating))}</span>
+            <span style={{ color: MUTED, fontSize: 11, marginLeft: 4 }}>{pro.rating} · {pro.reviews} reviews</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: pro.available ? GREEN : "#888" }} />
+            <span style={{ fontSize: 11, color: pro.available ? GREEN : MUTED }}>{pro.available ? "Available" : "Busy"}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <GoldBtn onClick={() => onProfile(pro)} outline style={{ flex: 1, padding: "9px 0", fontSize: 12 }}>View Profile</GoldBtn>
+          <GoldBtn onClick={() => setBookModal(pro)} style={{ flex: 1, padding: "9px 0", fontSize: 12 }}>Book Now</GoldBtn>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ minHeight: "100vh", background: DARK, padding: "20px 20px 100px" }}>
       <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 22, marginBottom: 16 }}>Discover Professionals</h2>
@@ -2086,47 +2161,26 @@ function ExploreScreen({ onProfile, user, realPros = [] }) {
           <button key={cat} onClick={() => setSelectedCat(cat)} style={{ background: selectedCat === cat ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : `${GOLD}11`, color: selectedCat === cat ? "#0A0A0B" : MUTED, border: selectedCat === cat ? "none" : `1px solid ${BORDER}`, borderRadius: 20, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{cat}</button>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
-        {filtered.map(pro => (
-          <div key={pro.id} style={{ background: CARD, borderRadius: 18, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
-            <div style={{ height: 4, background: `linear-gradient(90deg, ${pro.color}, ${pro.color}44)` }} />
-            <div style={{ padding: "18px 18px 14px" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 12 }}>
-                <Avatar initials={pro.avatar} size={52} color={pro.color} img={pro.avatarUrl} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span style={{ fontWeight: 800, fontSize: 15, color: TEXT }}>{pro.name}</span>
-                    <VerifiedBadge verified={pro.verified} size={15} />
-                  </div>
-                  <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>{pro.handle}</div>
-                  <Badge text={pro.category} color={pro.color} />
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>₦{(pro.shopPrice || pro.mobilePrice || 0).toLocaleString()}</div>
-                  <div style={{ fontSize: 10, color: MUTED }}>from</div>
-                </div>
-              </div>
-              <p style={{ fontSize: 12, color: `${TEXT}99`, margin: "0 0 10px", lineHeight: 1.6 }}>{pro.bio}</p>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                {pro.tags.map(tag => <span key={tag} style={{ fontSize: 10, color: pro.color, background: `${pro.color}15`, border: `1px solid ${pro.color}33`, borderRadius: 4, padding: "2px 8px" }}>{tag}</span>)}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `1px solid ${BORDER}`, paddingTop: 10, marginBottom: 12 }}>
-                <div>
-                  <span style={{ color: GOLD, fontSize: 12 }}>{"★".repeat(Math.round(pro.rating))}</span>
-                  <span style={{ color: MUTED, fontSize: 11, marginLeft: 4 }}>{pro.rating} · {pro.reviews} reviews</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: pro.available ? GREEN : "#888" }} />
-                  <span style={{ fontSize: 11, color: pro.available ? GREEN : MUTED }}>{pro.available ? "Available" : "Busy"}</span>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <GoldBtn onClick={() => onProfile(pro)} outline style={{ flex: 1, padding: "9px 0", fontSize: 12 }}>View Profile</GoldBtn>
-                <GoldBtn onClick={() => setBookModal(pro)} style={{ flex: 1, padding: "9px 0", fontSize: 12 }}>Book Now</GoldBtn>
-              </div>
-            </div>
+
+      {/* Featured / Boosted section */}
+      {boostedPros.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 14 }}>🚀</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: GOLD, letterSpacing: 1 }}>FEATURED PROFESSIONALS</span>
           </div>
-        ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+            {boostedPros.map(pro => <ProCard key={pro.id} pro={pro} />)}
+          </div>
+          <div style={{ borderBottom: `1px solid ${BORDER}`, marginTop: 24, marginBottom: 20 }} />
+          {regularPros.length > 0 && (
+            <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, letterSpacing: 1, marginBottom: 12 }}>ALL PROFESSIONALS</div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+        {regularPros.map(pro => <ProCard key={pro.id} pro={pro} />)}
       </div>
       {bookModal && <BookingModal pro={bookModal} user={user} onClose={() => setBookModal(null)} />}
     </div>
