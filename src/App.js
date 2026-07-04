@@ -59,6 +59,29 @@ function openFlutterwaveCheckout({ amount, email, name, phone, txRef, meta, onSu
 }
 
 
+// ─── PUSH NOTIFICATION HELPER ───
+async function registerPushNotifications(user) {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    const reg = await navigator.serviceWorker.register("/service-worker.js");
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return;
+    const existing = await reg.pushManager.getSubscription();
+    const sub = existing || await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: process.env.REACT_APP_VAPID_PUBLIC_KEY,
+    });
+    await fetch("/api/push-subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: user.id, subscription: sub.toJSON() }),
+    });
+    console.log("✅ Push notifications registered");
+  } catch (err) {
+    console.error("Push registration error:", err);
+  }
+}
+
 const PRODUCT_COMMISSION_RATE = 0.05; // 5% on every product sold
 
 // ─── DEMO DATA ───
@@ -788,7 +811,23 @@ function BookingModal({ pro, onClose, user }) {
         user_id: user.id,
         description: `${pro.tags[selectedService]} with ${pro.name}`,
       },
-      onSuccess: () => setStep(4),
+      onSuccess: async (response) => {
+        // Notify the professional about the new booking
+        if (pro.id && pro.id.startsWith("db-")) {
+          const proId = pro.id.replace("db-", "");
+          fetch("/api/push-send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: proId,
+              title: "📅 New Booking!",
+              body: `${user.name} just booked ${pro.tags[selectedService]} with you`,
+              url: "https://stylex.pro",
+            }),
+          }).catch(() => {});
+        }
+        setStep(4);
+      },
       onClose: () => setPaying(false),
     });
   };
@@ -1970,7 +2009,7 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {user && <Avatar initials={user.name.slice(0, 2).toUpperCase()} size={32} color={GOLD} />}
-          <button style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>🔔</button>
+          <button onClick={() => user && registerPushNotifications(user)} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>🔔</button>
         </div>
       </div>
 
@@ -3832,6 +3871,8 @@ function StylexApp() {
     setUser(userData);
     setShowAuth(false);
     setActiveTab("home");
+    // Register push notifications after login
+    registerPushNotifications(userData);
   };
 
   const handleLogout = async () => {
