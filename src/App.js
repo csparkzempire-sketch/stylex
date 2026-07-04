@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { MessagingScreen, MessageButton } from "./MessagingSystem";
 
 // ─── SUPABASE ───
 const supabase = createClient(
@@ -3495,7 +3496,8 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
             <button onClick={handleFollow} style={{ flex: 1, background: isFollowing ? DARK3 : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: isFollowing ? `1px solid ${BORDER}` : "none", borderRadius: 10, color: isFollowing ? TEXT : "#0A0A0B", padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
               {isFollowing ? "Following ✓" : "Follow"}
             </button>
-            <GoldBtn onClick={() => onBook(pro)} style={{ flex: 1, padding: "10px" }}>Book Now</GoldBtn>
+            <MessageButton user={user} targetUser={{ id: proDbId, name: myName || pro.name, avatarUrl: myAvatar }} onLogin={() => {}} style={{ flex: 1 }} />
+            <GoldBtn onClick={() => onBook(pro)} style={{ flex: 1, padding: "10px" }}>Book</GoldBtn>
           </div>
         )}
 
@@ -3978,6 +3980,10 @@ function StylexApp() {
         </div>
       )}
 
+      {activeTab === "messages" && (
+        <MessagingScreen user={user} onLogin={() => setShowAuth(true)} />
+      )}
+
       {activeTab === "marketplace" && (
         <MarketplaceScreen user={user} onLogin={() => setShowAuth(true)} />
       )}
@@ -4036,6 +4042,12 @@ function StylexApp() {
         <button onClick={() => setActiveTab("explore")} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
           <span style={{ fontSize: 22, opacity: activeTab === "explore" ? 1 : 0.45 }}>🔍</span>
           <span style={{ fontSize: 9, color: activeTab === "explore" ? GOLD : MUTED, fontWeight: activeTab === "explore" ? 700 : 500, letterSpacing: 0.3 }}>Explore</span>
+        </button>
+
+        {/* Messages */}
+        <button onClick={() => setActiveTab("messages")} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0", position: "relative" }}>
+          <span style={{ fontSize: 22, opacity: activeTab === "messages" ? 1 : 0.45 }}>💬</span>
+          <span style={{ fontSize: 9, color: activeTab === "messages" ? GOLD : MUTED, fontWeight: activeTab === "messages" ? 700 : 500, letterSpacing: 0.3 }}>Messages</span>
         </button>
 
         {/* Post (pros only) or Scan placeholder for clients */}
