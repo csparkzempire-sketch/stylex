@@ -437,17 +437,21 @@ export function MessagingScreen({ user, initialConversation = null, onLogin }) {
   const handleStartChat = async (otherUser) => {
     setShowNewChat(false);
     // Check if conversation already exists - try both orderings
-    const { data: existing1 } = await supabase.from("conversations")
+    const { data: existing1, error: err1 } = await supabase.from("conversations")
       .select("*")
       .eq("participant1_id", user.id)
       .eq("participant2_id", otherUser.id)
       .maybeSingle();
 
-    const { data: existing2 } = !existing1 ? await supabase.from("conversations")
+    if (err1) { console.error("Existence check 1 error:", err1); alert("Error checking conversations: " + err1.message); return; }
+
+    const { data: existing2, error: err2 } = !existing1 ? await supabase.from("conversations")
       .select("*")
       .eq("participant1_id", otherUser.id)
       .eq("participant2_id", user.id)
-      .maybeSingle() : { data: null };
+      .maybeSingle() : { data: null, error: null };
+
+    if (err2) { console.error("Existence check 2 error:", err2); alert("Error checking conversations: " + err2.message); return; }
 
     const existing = existing1 || existing2;
     if (existing) { setActiveConvo(existing); setView("chat"); return; }
@@ -463,7 +467,7 @@ export function MessagingScreen({ user, initialConversation = null, onLogin }) {
       last_message: "",
     }).select().maybeSingle();
 
-    if (error) { console.error("Convo create error:", error); alert("Could not start conversation. Please try again."); return; }
+    if (error) { console.error("Convo create error:", error); alert("Could not start conversation: " + error.message); return; }
     if (newConvo) { setActiveConvo(newConvo); setView("chat"); }
   };
 
@@ -488,15 +492,19 @@ export function MessageButton({ user, targetUser, onLogin, style = {} }) {
   const handleMessage = async () => {
     if (!user) { onLogin(); return; }
     setLoading(true);
-    const { data: existing1 } = await supabase.from("conversations")
+    const { data: existing1, error: err1 } = await supabase.from("conversations")
       .select("*").eq("participant1_id", user.id).eq("participant2_id", targetUser.id).maybeSingle();
-    const { data: existing2 } = !existing1 ? await supabase.from("conversations")
-      .select("*").eq("participant1_id", targetUser.id).eq("participant2_id", user.id).maybeSingle() : { data: null };
+    if (err1) { console.error("Existence check error:", err1); alert("Error: " + err1.message); setLoading(false); return; }
+
+    const { data: existing2, error: err2 } = !existing1 ? await supabase.from("conversations")
+      .select("*").eq("participant1_id", targetUser.id).eq("participant2_id", user.id).maybeSingle() : { data: null, error: null };
+    if (err2) { console.error("Existence check error:", err2); alert("Error: " + err2.message); setLoading(false); return; }
+
     const existing = existing1 || existing2;
 
     if (existing) { setConvo(existing); setLoading(false); setShowChat(true); return; }
 
-    const { data: newConvo } = await supabase.from("conversations").insert({
+    const { data: newConvo, error: insErr } = await supabase.from("conversations").insert({
       participant1_id: user.id,
       participant1_name: user.name,
       participant1_avatar: null,
@@ -505,6 +513,8 @@ export function MessageButton({ user, targetUser, onLogin, style = {} }) {
       participant2_avatar: targetUser.avatarUrl || null,
       last_message: "",
     }).select().maybeSingle();
+
+    if (insErr) { console.error("Convo create error:", insErr); alert("Could not start conversation: " + insErr.message); setLoading(false); return; }
 
     setConvo(newConvo);
     setLoading(false);
