@@ -3602,9 +3602,10 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
 
   const isOwner = user && (pro.id === "db-" + user.id || pro.id === user.id);
   const proDbId = typeof pro.id === "string" && pro.id.startsWith("db-") ? pro.id.replace("db-", "") : pro.id;
+  const isRealPro = typeof pro.id === "string" && pro.id.startsWith("db-");
 
   useEffect(() => {
-    if (!proDbId) return;
+    if (!proDbId || !isRealPro) return;
     // follower count
     supabase.from("follows").select("id", { count: "exact" }).eq("pro_id", proDbId)
       .then(({ count }) => setFollowerCount(count || 0));
@@ -3722,10 +3723,14 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
           </div>
         ) : (
           <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-            <button onClick={handleFollow} style={{ flex: 1, background: isFollowing ? DARK3 : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: isFollowing ? `1px solid ${BORDER}` : "none", borderRadius: 10, color: isFollowing ? TEXT : "#0A0A0B", padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={handleFollow} disabled={!isRealPro} title={!isRealPro ? "Demo profile — cannot follow" : ""} style={{ flex: 1, background: !isRealPro ? DARK3 : isFollowing ? DARK3 : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: isFollowing || !isRealPro ? `1px solid ${BORDER}` : "none", borderRadius: 10, color: !isRealPro ? MUTED : isFollowing ? TEXT : "#0A0A0B", padding: "10px", fontSize: 13, fontWeight: 700, cursor: isRealPro ? "pointer" : "not-allowed" }}>
               {isFollowing ? "Following ✓" : "Follow"}
             </button>
-            <MessageButton user={user} targetUser={{ id: proDbId, name: myName || pro.name, avatarUrl: myAvatar }} onLogin={() => {}} style={{ flex: 1 }} />
+            {isRealPro ? (
+              <MessageButton user={user} targetUser={{ id: proDbId, name: myName || pro.name, avatarUrl: myAvatar }} onLogin={() => {}} style={{ flex: 1 }} />
+            ) : (
+              <button disabled title="This is a demo profile — real professionals can be messaged" style={{ flex: 1, background: "transparent", border: `1.5px solid ${BORDER}`, borderRadius: 10, color: MUTED, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "not-allowed" }}>💬 Message</button>
+            )}
             <GoldBtn onClick={() => onBook(pro)} style={{ flex: 1, padding: "10px" }}>Book</GoldBtn>
           </div>
         )}
