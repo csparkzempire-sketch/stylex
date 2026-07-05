@@ -230,7 +230,13 @@ function ChatScreen({ user, conversation, onBack }) {
       duration,
     };
 
-    await supabase.from("messages").insert(msg);
+    const { error: insertErr } = await supabase.from("messages").insert(msg);
+    if (insertErr) {
+      console.error("Message send error:", insertErr);
+      alert("Could not send message: " + insertErr.message);
+      setSending(false);
+      return;
+    }
 
     // Update conversation last message
     const lastMsg = type === "text" ? msgContent : type === "image" ? "📷 Photo" : type === "voice" ? "🎤 Voice note" : msgContent;

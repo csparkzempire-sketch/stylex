@@ -1994,13 +1994,15 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
   const isPro = user && user.type === "professional";
 
   const toggleSave = async (post) => {
-    if (!user) return;
+    if (!user) { alert("Please sign in to save posts."); return; }
     const isSaved = saved[post.id];
     setSaved(p => ({ ...p, [post.id]: !isSaved }));
     if (isSaved) {
-      await supabase.from("saved_posts").delete().eq("user_id", user.id).eq("post_id", post.id);
+      const { error } = await supabase.from("saved_posts").delete().eq("user_id", user.id).eq("post_id", post.id);
+      if (error) { console.error("Unsave error:", error); setSaved(p => ({ ...p, [post.id]: true })); }
     } else {
-      await supabase.from("saved_posts").insert({ user_id: user.id, post_id: post.id });
+      const { error } = await supabase.from("saved_posts").insert({ user_id: user.id, post_id: post.id });
+      if (error) { console.error("Save error:", error); alert("Could not save post: " + error.message); setSaved(p => ({ ...p, [post.id]: false })); }
     }
   };
 
@@ -3193,7 +3195,11 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
         .then(({ data }) => { setBookings(data || []); setLoadingTab(false); });
     } else if (activeTab === "following") {
       supabase.from("follows").select("following_id, following_name, following_avatar").eq("follower_id", user.id)
-        .then(({ data }) => { setFollowing(data || []); setLoadingTab(false); });
+        .then(({ data, error }) => {
+          if (error) console.error("Following load error:", error);
+          setFollowing(data || []);
+          setLoadingTab(false);
+        });
     } else if (activeTab === "saved") {
       supabase.from("saved_posts").select("*, posts(*)").eq("user_id", user.id).order("created_at", { ascending: false })
         .then(({ data }) => { setSavedPosts((data || []).map(s => s.posts).filter(Boolean)); setLoadingTab(false); });
@@ -3641,13 +3647,15 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
   }, [proDbId, activeTab]);
 
   const handleFollow = async () => {
-    if (!user) return;
+    if (!user) { alert("Please sign in to follow."); return; }
     if (isFollowing) {
-      await supabase.from("follows").delete().eq("follower_id", user.id).eq("following_id", proDbId);
+      const { error } = await supabase.from("follows").delete().eq("follower_id", user.id).eq("following_id", proDbId);
+      if (error) { console.error("Unfollow error:", error); alert("Could not unfollow: " + error.message); return; }
       setIsFollowing(false);
       setFollowerCount(c => Math.max(0, c - 1));
     } else {
-      await supabase.from("follows").insert({ follower_id: user.id, following_id: proDbId, following_name: pro.name, following_avatar: myAvatar || null });
+      const { error } = await supabase.from("follows").insert({ follower_id: user.id, following_id: proDbId, following_name: myName || pro.name, following_avatar: myAvatar || null });
+      if (error) { console.error("Follow error:", error); alert("Could not follow: " + error.message); return; }
       setIsFollowing(true);
       setFollowerCount(c => c + 1);
     }
