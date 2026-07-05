@@ -3194,7 +3194,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
       supabase.from("bookings").select("*").eq("client_id", user.id).order("created_at", { ascending: false })
         .then(({ data }) => { setBookings(data || []); setLoadingTab(false); });
     } else if (activeTab === "following") {
-      supabase.from("follows").select("following_id, following_name, following_avatar").eq("follower_id", user.id)
+      supabase.from("follows").select("pro_id, following_name, following_avatar").eq("follower_id", user.id)
         .then(({ data, error }) => {
           if (error) console.error("Following load error:", error);
           setFollowing(data || []);
@@ -3606,11 +3606,11 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
   useEffect(() => {
     if (!proDbId) return;
     // follower count
-    supabase.from("follows").select("id", { count: "exact" }).eq("following_id", proDbId)
+    supabase.from("follows").select("id", { count: "exact" }).eq("pro_id", proDbId)
       .then(({ count }) => setFollowerCount(count || 0));
     // is following?
     if (user) {
-      supabase.from("follows").select("id").eq("follower_id", user.id).eq("following_id", proDbId).maybeSingle()
+      supabase.from("follows").select("id").eq("follower_id", user.id).eq("pro_id", proDbId).maybeSingle()
         .then(({ data }) => setIsFollowing(!!data));
     }
     // pro's latest badge & avatar info
@@ -3649,12 +3649,12 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
   const handleFollow = async () => {
     if (!user) { alert("Please sign in to follow."); return; }
     if (isFollowing) {
-      const { error } = await supabase.from("follows").delete().eq("follower_id", user.id).eq("following_id", proDbId);
+      const { error } = await supabase.from("follows").delete().eq("follower_id", user.id).eq("pro_id", proDbId);
       if (error) { console.error("Unfollow error:", error); alert("Could not unfollow: " + error.message); return; }
       setIsFollowing(false);
       setFollowerCount(c => Math.max(0, c - 1));
     } else {
-      const { error } = await supabase.from("follows").insert({ follower_id: user.id, following_id: proDbId, following_name: myName || pro.name, following_avatar: myAvatar || null });
+      const { error } = await supabase.from("follows").insert({ follower_id: user.id, pro_id: proDbId, following_name: myName || pro.name, following_avatar: myAvatar || null });
       if (error) { console.error("Follow error:", error); alert("Could not follow: " + error.message); return; }
       setIsFollowing(true);
       setFollowerCount(c => c + 1);
