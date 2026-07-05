@@ -127,13 +127,13 @@ function NewChatModal({ user, onClose, onStart }) {
     if (!search.trim()) { setResults([]); return; }
     const timer = setTimeout(async () => {
       setSearching(true);
-      const { data } = await supabase.from("profiles").select("id, full_name, avatar_url, user_type, category")
+      const { data } = await supabase.from("profiles").select("id, full_name, avatar_url, user_type, category, username")
         .neq("id", user.id)
-        .ilike("full_name", `%${search}%`)
+        .or(`full_name.ilike.%${search}%,username.ilike.%${search}%`)
         .limit(10);
       setResults(data || []);
       setSearching(false);
-    }, 400);
+    }, 300);
     return () => clearTimeout(timer);
   }, [search]);
 
@@ -155,12 +155,13 @@ function NewChatModal({ user, onClose, onStart }) {
           {searching && <div style={{ textAlign: "center", padding: 20, color: MUTED }}>Searching...</div>}
           {!searching && search && results.length === 0 && <div style={{ textAlign: "center", padding: 20, color: MUTED }}>No users found</div>}
           {results.map(u => (
-            <button key={u.id} onClick={() => onStart(u)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", padding: "12px 4px", display: "flex", alignItems: "center", gap: 12, textAlign: "left", borderBottom: `1px solid ${BORDER}22` }}>
+            <button key={u.id} onClick={() => onStart(u)} style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 14, cursor: "pointer", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, textAlign: "left", marginBottom: 10 }}>
               <Avatar initials={(u.full_name || "U").slice(0, 2).toUpperCase()} size={44} color={GOLD} img={u.avatar_url || null} />
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{u.full_name}</div>
-                <div style={{ fontSize: 12, color: MUTED }}>{u.user_type === "professional" ? `✂️ ${u.category || "Professional"}` : "👤 Client"}</div>
+                <div style={{ fontSize: 12, color: MUTED }}>{u.user_type === "professional" ? `✂️ ${u.category || "Professional"}` : "👤 Client"}{u.username ? ` · @${u.username}` : ""}</div>
               </div>
+              <div style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, borderRadius: 8, color: "#0A0A0B", padding: "6px 14px", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>Message</div>
             </button>
           ))}
         </div>

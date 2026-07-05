@@ -1993,6 +1993,17 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
 
   const isPro = user && user.type === "professional";
 
+  const toggleSave = async (post) => {
+    if (!user) return;
+    const isSaved = saved[post.id];
+    setSaved(p => ({ ...p, [post.id]: !isSaved }));
+    if (isSaved) {
+      await supabase.from("saved_posts").delete().eq("user_id", user.id).eq("post_id", post.id);
+    } else {
+      await supabase.from("saved_posts").insert({ user_id: user.id, post_id: post.id });
+    }
+  };
+
   const toggleLike = async (post) => {
     const isLiked = liked[post.id];
     setLiked(p => ({ ...p, [post.id]: !isLiked }));
@@ -2058,7 +2069,7 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
                   <button onClick={() => setCommentPost(post)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
                     <span style={{ fontSize: 16 }}>💬</span>{formatNum(post.comments || 0)}
                   </button>
-                  <button onClick={() => setSaved(p => ({ ...p, [post.id]: !p[post.id] }))} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
+                  <button onClick={() => toggleSave(post)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: MUTED, fontSize: 12, fontWeight: 600 }}>
                     <span style={{ fontSize: 16 }}>{saved[post.id] ? "🔖" : "📎"}</span>
                   </button>
                 </div>
@@ -3078,8 +3089,8 @@ function HelpSupportPage({ onBack, user }) {
       ))}
 
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-        <button style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px", cursor: "pointer", fontSize: 12, color: MUTED, fontWeight: 600 }}>📜 Terms of Service</button>
-        <button style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px", cursor: "pointer", fontSize: 12, color: MUTED, fontWeight: 600 }}>🔐 Privacy Policy</button>
+        <button onClick={() => setActiveSection("terms")} style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px", cursor: "pointer", fontSize: 12, color: MUTED, fontWeight: 600 }}>📜 Terms of Service</button>
+        <button onClick={() => setActiveSection("privacy")} style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px", cursor: "pointer", fontSize: 12, color: MUTED, fontWeight: 600 }}>🔐 Privacy Policy</button>
       </div>
 
       <div style={{ marginTop: 20, textAlign: "center" }}>
@@ -3133,8 +3144,10 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
     } else if (activeTab === "following") {
       supabase.from("follows").select("following_id, following_name, following_avatar").eq("follower_id", user.id)
         .then(({ data }) => { setFollowing(data || []); setLoadingTab(false); });
+    } else if (activeTab === "saved") {
+      supabase.from("saved_posts").select("*, posts(*)").eq("user_id", user.id).order("created_at", { ascending: false })
+        .then(({ data }) => { setSavedPosts((data || []).map(s => s.posts).filter(Boolean)); setLoadingTab(false); });
     } else {
-      // saved, settings — no async load needed
       setLoadingTab(false);
     }
   }, [user, activeTab, refreshKey]);
@@ -3216,10 +3229,22 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
 
         {/* Saved Tab */}
         {!loadingTab && activeTab === "saved" && (
-          <div style={{ textAlign: "center", padding: 40 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🔖</div>
-            <p style={{ color: MUTED, fontSize: 13 }}>Saved posts coming soon</p>
-          </div>
+          savedPosts.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🔖</div>
+              <p style={{ color: MUTED, fontSize: 13 }}>No saved posts yet — tap 📎 on any post to save it</p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3 }}>
+              {savedPosts.map(post => (
+                <div key={post.id} style={{ aspectRatio: "1", borderRadius: 4, overflow: "hidden", background: DARK3 }}>
+                  {post.media_type === "video"
+                    ? <video src={post.media_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} muted playsInline />
+                    : <img src={post.media_url} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                </div>
+              ))}
+            </div>
+          )
         )}
 
         {/* Following Tab */}
@@ -3293,11 +3318,22 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
               <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Available balance</div>
             </div>
             {[
-              { icon: "➕", label: "Add Debit/Credit Card", sub: "Visa, Mastercard, Verve" },
-              { icon: "🏦", label: "Add Bank Account", sub: "Link your bank for transfers" },
-              { icon: "📱", label: "Add Mobile Money", sub: "MTN, Airtel, Glo Money" },
+              { icon: "➕", label: "Add Debit/Credit Card", sub: "Visa, Mastercard, Verve — pay ₦50 to verify", payOpts: "card" },
+              { icon: "🏦", label: "Add Bank Account", sub: "Link your bank for transfers", payOpts: "banktransfer" },
+              { icon: "📱", label: "Add Mobile Money", sub: "MTN, Airtel, Glo Money", payOpts: "mobilemoney,ussd" },
             ].map(item => (
-              <button key={item.label} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
+              <button key={item.label} onClick={() => {
+                if (!user) { alert("Please sign in first."); return; }
+                openFlutterwaveCheckout({
+                  amount: 50,
+                  email: user.email,
+                  name: user.name,
+                  txRef: "SX-VERIFY-" + Math.random().toString(36).substr(2, 8).toUpperCase(),
+                  meta: { type: "card_verify", user_id: user.id, description: "Card verification" },
+                  onSuccess: () => alert("✅ Payment method added successfully!"),
+                  onClose: () => {},
+                });
+              }} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
                 <span style={{ fontSize: 20 }}>{item.icon}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
@@ -3306,10 +3342,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
                 <span style={{ color: MUTED, fontSize: 18 }}>›</span>
               </button>
             ))}
-            <div style={{ background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 12, padding: 14, marginTop: 6 }}>
-              <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginBottom: 4 }}>💡 Coming Soon</div>
-              <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.6 }}>Real payment processing via Flutterwave is being activated. Your card details will be fully encrypted and secure.</div>
-            </div>
+            <p style={{ fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 1.6, marginTop: 8 }}>A small ₦50 charge is used to verify your payment method. It will be refunded to your STYLEX wallet.</p>
           </div>
         )}
 
@@ -4070,7 +4103,7 @@ function StylexApp() {
   ];
 
   return (
-    <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", maxWidth: 480, margin: "0 auto", position: "relative" }}>
+    <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", width: "100%", minHeight: "100vh", position: "relative" }}>
 
       {/* ── Screens ── */}
       {activeTab === "home" && (
@@ -4168,7 +4201,7 @@ function StylexApp() {
       )}
 
       {/* ── Bottom Navigation ── */}
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: `${DARK}f5`, backdropFilter: "blur(16px)", borderTop: `1px solid ${BORDER}`, display: "flex", zIndex: 300, padding: "6px 0 8px" }}>
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: `${DARK}f5`, backdropFilter: "blur(16px)", borderTop: `1px solid ${BORDER}`, display: "flex", zIndex: 300, padding: "6px 0 8px", maxWidth: "100%" }}>
 
         {/* Home */}
         <button onClick={() => setActiveTab("home")} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0" }}>
