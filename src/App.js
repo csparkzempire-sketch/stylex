@@ -3026,6 +3026,56 @@ function HelpSupportPage({ onBack, user }) {
     </div>
   );
 
+  if (activeSection === "terms") return (
+    <div>
+      <button onClick={() => setActiveSection(null)} style={{ background: "none", border: "none", color: "#C9A84C", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: "#F0EDE8", fontWeight: 800, fontSize: 17, marginBottom: 4 }}>📜 Terms of Service</h3>
+      <div style={{ fontSize: 11, color: "#888898", marginBottom: 20 }}>Last updated: July 2026</div>
+      {[
+        ["1. Acceptance", "By using STYLEX, you agree to these Terms. If you do not agree, please stop using the platform."],
+        ["2. Eligibility", "You must be at least 18 years old to use STYLEX."],
+        ["3. Professional Accounts", "Professionals must provide accurate profile and pricing information. STYLEX may suspend accounts with false information."],
+        ["4. Bookings & Payments", "STYLEX charges a 20% platform fee on every booking. All payments go through Flutterwave. Cancellation policies are set by each professional."],
+        ["5. Marketplace", "Sellers are responsible for listed products. STYLEX charges 5% per sale. Fraudulent listings will be removed."],
+        ["6. User Conduct", "You agree not to use STYLEX for illegal activity, harassment, or fraud. Violations may result in account termination."],
+        ["7. Intellectual Property", "All STYLEX content, branding and software is our property and may not be used without permission."],
+        ["8. Liability", "STYLEX is a marketplace and is not liable for the quality of services or products from third parties."],
+        ["9. Changes", "We may update these Terms. Continued use means acceptance of updates."],
+        ["10. Contact", "Questions? Email support@stylex.pro"],
+      ].map(([title, body], i) => (
+        <div key={i} style={{ marginBottom: 18 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#C9A84C", marginBottom: 6 }}>{title}</div>
+          <div style={{ fontSize: 13, color: "#F0EDE8cc", lineHeight: 1.7 }}>{body}</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  if (activeSection === "privacy") return (
+    <div>
+      <button onClick={() => setActiveSection(null)} style={{ background: "none", border: "none", color: "#C9A84C", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: "#F0EDE8", fontWeight: 800, fontSize: 17, marginBottom: 4 }}>🔐 Privacy Policy</h3>
+      <div style={{ fontSize: 11, color: "#888898", marginBottom: 20 }}>Last updated: July 2026</div>
+      {[
+        ["1. Data We Collect", "Name, email, phone, location, profile photos, bio, booking data, messages, and device usage data."],
+        ["2. How We Use It", "To run STYLEX, process bookings and payments, send notifications, and match clients with professionals."],
+        ["3. Payments", "All payments go through Flutterwave. We do not store your card details."],
+        ["4. Data Sharing", "We share data with professionals you book and payment processors. We never sell your personal data."],
+        ["5. Storage & Security", "Your data is stored securely on Supabase with industry-standard encryption."],
+        ["6. Your Rights", "You can update or delete your profile anytime. Use Settings → Privacy → Delete Account to erase all your data."],
+        ["7. Cookies", "We use cookies to keep you signed in. No third-party ad tracking."],
+        ["8. Children", "STYLEX is for users 18 and above. We do not knowingly collect data from minors."],
+        ["9. Changes", "We may update this policy and will notify you in the app for significant changes."],
+        ["10. Contact", "Data questions? Email support@stylex.pro"],
+      ].map(([title, body], i) => (
+        <div key={i} style={{ marginBottom: 18 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#C9A84C", marginBottom: 6 }}>{title}</div>
+          <div style={{ fontSize: 13, color: "#F0EDE8cc", lineHeight: 1.7 }}>{body}</div>
+        </div>
+      ))}
+    </div>
+  );
+
   if (activeSection === "rate") return (
     <div>
       <button onClick={() => setActiveSection(null)} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>

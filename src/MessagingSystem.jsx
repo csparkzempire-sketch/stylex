@@ -430,16 +430,24 @@ export function MessagingScreen({ user, initialConversation = null, onLogin }) {
 
   const handleStartChat = async (otherUser) => {
     setShowNewChat(false);
-    // Check if conversation already exists
-    const { data: existing } = await supabase.from("conversations")
+    // Check if conversation already exists - try both orderings
+    const { data: existing1 } = await supabase.from("conversations")
       .select("*")
-      .or(`and(participant1_id.eq.${user.id},participant2_id.eq.${otherUser.id}),and(participant1_id.eq.${otherUser.id},participant2_id.eq.${user.id})`)
+      .eq("participant1_id", user.id)
+      .eq("participant2_id", otherUser.id)
       .maybeSingle();
 
+    const { data: existing2 } = !existing1 ? await supabase.from("conversations")
+      .select("*")
+      .eq("participant1_id", otherUser.id)
+      .eq("participant2_id", user.id)
+      .maybeSingle() : { data: null };
+
+    const existing = existing1 || existing2;
     if (existing) { setActiveConvo(existing); setView("chat"); return; }
 
     // Create new conversation
-    const { data: newConvo } = await supabase.from("conversations").insert({
+    const { data: newConvo, error } = await supabase.from("conversations").insert({
       participant1_id: user.id,
       participant1_name: user.name,
       participant1_avatar: null,
@@ -449,6 +457,7 @@ export function MessagingScreen({ user, initialConversation = null, onLogin }) {
       last_message: "",
     }).select().maybeSingle();
 
+    if (error) { console.error("Convo create error:", error); alert("Could not start conversation. Please try again."); return; }
     if (newConvo) { setActiveConvo(newConvo); setView("chat"); }
   };
 
@@ -473,10 +482,11 @@ export function MessageButton({ user, targetUser, onLogin, style = {} }) {
   const handleMessage = async () => {
     if (!user) { onLogin(); return; }
     setLoading(true);
-    const { data: existing } = await supabase.from("conversations")
-      .select("*")
-      .or(`and(participant1_id.eq.${user.id},participant2_id.eq.${targetUser.id}),and(participant1_id.eq.${targetUser.id},participant2_id.eq.${user.id})`)
-      .maybeSingle();
+    const { data: existing1 } = await supabase.from("conversations")
+      .select("*").eq("participant1_id", user.id).eq("participant2_id", targetUser.id).maybeSingle();
+    const { data: existing2 } = !existing1 ? await supabase.from("conversations")
+      .select("*").eq("participant1_id", targetUser.id).eq("participant2_id", user.id).maybeSingle() : { data: null };
+    const existing = existing1 || existing2;
 
     if (existing) { setConvo(existing); setLoading(false); setShowChat(true); return; }
 
