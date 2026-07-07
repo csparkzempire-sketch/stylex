@@ -472,7 +472,11 @@ export function MessagingScreen({ user, initialConversation = null, onLogin }) {
   };
 
   if (view === "chat" && activeConvo) {
-    return <ChatScreen user={user} conversation={activeConvo} onBack={() => setView("list")} />;
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 500, background: DARK }}>
+        <ChatScreen user={user} conversation={activeConvo} onBack={() => setView("list")} />
+      </div>
+    );
   }
 
   return (
