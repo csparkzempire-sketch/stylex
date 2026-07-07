@@ -194,22 +194,42 @@ function ChatScreen({ user, conversation, onBack }) {
 
   const loadMessages = async () => {
     const { data } = await supabase.from("messages").select("*").eq("conversation_id", conversation.id).order("created_at", { ascending: true });
-    setMessages(data || []);
+    setMessages(prev => {
+      // Only update if message count changed to avoid unnecessary re-renders
+      if (data && data.length !== prev.length) return data;
+      return prev;
+    });
     // Mark as read
     await supabase.from("conversations").update(isP1 ? { unread_1: 0 } : { unread_2: 0 }).eq("id", conversation.id);
   };
 
   useEffect(() => {
     loadMessages();
+    // Real-time subscription
     const channel = supabase.channel(`chat-${conversation.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversation.id}` }, (payload) => {
-        setMessages(ms => [...ms, payload.new]);
+        setMessages(ms => {
+          if (ms.find(m => m.id === payload.new.id)) return ms; // avoid duplicates
+          return [...ms, payload.new];
+        });
       }).subscribe();
-    return () => supabase.removeChannel(channel);
+
+    // Polling fallback every 3 seconds in case real-time isn't enabled
+    const pollInterval = setInterval(loadMessages, 3000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+    };
   }, [conversation.id]);
 
+  // Auto-scroll to bottom only when a NEW message arrives (not on manual scroll)
+  const prevMsgCount = useRef(0);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > prevMsgCount.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevMsgCount.current = messages.length;
   }, [messages]);
 
   const sendMessage = async (type = "text", content = null, mediaUrl = null, duration = null) => {
@@ -320,7 +340,7 @@ function ChatScreen({ user, conversation, onBack }) {
   const isMine = (msg) => msg.sender_id === user.id;
 
   return (
-    <div style={{ minHeight: "100vh", background: DARK, display: "flex", flexDirection: "column", fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
+    <div style={{ height: "100vh", background: DARK, display: "flex", flexDirection: "column", fontFamily: "'Helvetica Neue', Arial, sans-serif", overflow: "hidden" }}>
       {/* Header */}
       <div style={{ position: "sticky", top: 0, zIndex: 100, background: `${DARK}ee`, backdropFilter: "blur(12px)", borderBottom: `1px solid ${BORDER}`, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 8, color: TEXT, width: 34, height: 34, cursor: "pointer", fontSize: 16 }}>←</button>
@@ -332,7 +352,7 @@ function ChatScreen({ user, conversation, onBack }) {
       </div>
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 10, paddingBottom: 140 }}>
+      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "16px", display: "flex", flexDirection: "column", gap: 10, paddingBottom: 90 }}>
         {messages.length === 0 && (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
             <div style={{ fontSize: 40, marginBottom: 10 }}>👋</div>
@@ -377,7 +397,7 @@ function ChatScreen({ user, conversation, onBack }) {
 
       {/* Photo preview */}
       {mediaPreview && (
-        <div style={{ position: "fixed", bottom: 80, left: 0, right: 0, background: DARK2, border: `1px solid ${BORDER}`, padding: 14, display: "flex", alignItems: "center", gap: 12, zIndex: 50 }}>
+        <div style={{ flexShrink: 0, background: DARK2, borderTop: `1px solid ${BORDER}`, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
           <img src={mediaPreview} alt="preview" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 10 }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>Photo ready to send</div>
@@ -389,7 +409,7 @@ function ChatScreen({ user, conversation, onBack }) {
       )}
 
       {/* Input bar */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: `${DARK2}f5`, backdropFilter: "blur(16px)", borderTop: `1px solid ${BORDER}`, padding: "10px 16px 24px", display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ flexShrink: 0, background: `${DARK2}f5`, backdropFilter: "blur(16px)", borderTop: `1px solid ${BORDER}`, padding: "10px 16px 24px", display: "flex", alignItems: "center", gap: 10 }}>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhoto} style={{ display: "none" }} />
 
         {recording ? (
