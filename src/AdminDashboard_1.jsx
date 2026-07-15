@@ -127,6 +127,7 @@ function AdminLogin({ onLogin }) {
 }
 
 
+
 // ─── ANALYTICS PANEL ───
 function AnalyticsPanel({ bookings, users, posts, products, stats }) {
   const [period, setPeriod] = useState("monthly");
@@ -522,6 +523,165 @@ function SettingsPanel({ stats, follows, comments, showNotif }) {
   );
 }
 
+// ─── ADD PRO PANEL ───
+function AddProPanel({ showNotif, onCreated }) {
+  const CATEGORIES = ["Barber", "Hairstylist", "Makeup Artist", "Nail Technician", "Lash Technician", "Braider", "Loctician", "Skincare / Esthetician", "Spa / Massage", "Other"];
+
+  const blank = { full_name: "", username: "", category: "Barber", location: "", country: "Nigeria", shop_price: "", bio: "", phone: "" };
+  const [form, setForm] = useState(blank);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [workFiles, setWorkFiles] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState("");
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const slugify = (name) =>
+    name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "").slice(0, 20) + Math.floor(Math.random() * 900 + 100);
+
+  const uploadTo = async (bucket, file, prefix) => {
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const path = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: false });
+    if (error) throw error;
+    return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+  };
+
+  const handleCreate = async () => {
+    if (!form.full_name.trim()) { showNotif("Enter the pro's name", "error"); return; }
+    if (workFiles.length === 0) { showNotif("Add at least one work photo", "error"); return; }
+
+    setSaving(true);
+    try {
+      // 1. avatar (optional — falls back to first work photo)
+      let avatarUrl = null;
+      if (avatarFile) {
+        setProgress("Uploading profile photo...");
+        avatarUrl = await uploadTo("avatars", avatarFile, "av");
+      }
+
+      // 2. work photos
+      setProgress(`Uploading ${workFiles.length} work photos...`);
+      const workUrls = [];
+      for (let i = 0; i < workFiles.length; i++) {
+        const url = await uploadTo("posts", workFiles[i], "work");
+        workUrls.push(url);
+        setProgress(`Uploaded ${i + 1} of ${workFiles.length} photos...`);
+      }
+      if (!avatarUrl) avatarUrl = workUrls[0];
+
+      // 3. create the professional profile
+      setProgress("Creating profile...");
+      const username = form.username.trim() || slugify(form.full_name);
+      const { data: profile, error: profErr } = await supabase.from("profiles").insert({
+        full_name: form.full_name.trim(),
+        username,
+        user_type: "professional",
+        category: form.category,
+        location: form.location.trim() || null,
+        country: form.country.trim() || null,
+        shop_price: form.shop_price ? parseInt(form.shop_price, 10) : null,
+        bio: form.bio.trim() || null,
+        phone: form.phone.trim() || null,
+        avatar_url: avatarUrl,
+        is_verified: true,
+        is_available: true,
+        account_status: "active",
+      }).select().maybeSingle();
+
+      if (profErr) throw profErr;
+      const proId = profile.id;
+
+      // 4. write each photo to BOTH posts and portfolio (linked by pro_id)
+      setProgress("Building portfolio...");
+      const postRows = workUrls.map((url, i) => ({
+        pro_id: proId, pro_name: form.full_name.trim(),
+        media_url: url, media_type: "photo",
+        caption: i === 0 && form.bio.trim() ? form.bio.trim() : `${form.category} · ${form.location || form.country}`,
+        category: form.category, likes: 0, comments: 0,
+      }));
+      const portfolioRows = workUrls.map((url) => ({
+        pro_id: proId, pro_name: form.full_name.trim(),
+        category: form.category, style_name: form.category,
+        image_url: url,
+      }));
+
+      const [{ error: postErr }, { error: portErr }] = await Promise.all([
+        supabase.from("posts").insert(postRows),
+        supabase.from("portfolio").insert(portfolioRows),
+      ]);
+      if (postErr) throw postErr;
+      if (portErr) throw portErr;
+
+      showNotif(`${form.full_name} is live in Explore ✅`);
+      setForm(blank); setAvatarFile(null); setWorkFiles([]); setProgress("");
+      if (onCreated) onCreated();
+    } catch (err) {
+      console.error(err);
+      showNotif("Failed: " + (err.message || "unknown error"), "error");
+    }
+    setSaving(false);
+  };
+
+  const inputStyle = { width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "11px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box" };
+  const labelStyle = { fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 };
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      <div style={{ background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 12, padding: "14px 18px", marginBottom: 24, display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <span style={{ fontSize: 18 }}>👑</span>
+        <span style={{ fontSize: 13, color: `${GOLD}cc`, lineHeight: 1.55 }}>Create a founding pro from their Instagram. Fill their details, drop in their best work photos, and they go live in Explore instantly — verified, with a full portfolio.</span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div><label style={labelStyle}>FULL NAME *</label><input style={inputStyle} value={form.full_name} onChange={e => set("full_name", e.target.value)} placeholder="Amaka Braids" /></div>
+          <div><label style={labelStyle}>USERNAME</label><input style={inputStyle} value={form.username} onChange={e => set("username", e.target.value)} placeholder="auto if blank" /></div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div>
+            <label style={labelStyle}>CATEGORY *</label>
+            <select style={{ ...inputStyle, cursor: "pointer" }} value={form.category} onChange={e => set("category", e.target.value)}>
+              {CATEGORIES.map(c => <option key={c} value={c} style={{ background: DARK3 }}>{c}</option>)}
+            </select>
+          </div>
+          <div><label style={labelStyle}>SHOP PRICE (₦)</label><input style={inputStyle} type="number" value={form.shop_price} onChange={e => set("shop_price", e.target.value)} placeholder="5000" /></div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div><label style={labelStyle}>CITY / AREA</label><input style={inputStyle} value={form.location} onChange={e => set("location", e.target.value)} placeholder="Wuse, Abuja" /></div>
+          <div><label style={labelStyle}>COUNTRY</label><input style={inputStyle} value={form.country} onChange={e => set("country", e.target.value)} placeholder="Nigeria" /></div>
+        </div>
+
+        <div><label style={labelStyle}>PHONE (for your records)</label><input style={inputStyle} value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="080..." /></div>
+
+        <div><label style={labelStyle}>BIO</label><textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical", fontFamily: "inherit" }} value={form.bio} onChange={e => set("bio", e.target.value)} placeholder="Natural hair specialist. Crown jewels only." /></div>
+
+        <div>
+          <label style={labelStyle}>PROFILE PHOTO (optional — uses first work photo if blank)</label>
+          <input type="file" accept="image/*" onChange={e => setAvatarFile(e.target.files[0] || null)} style={{ ...inputStyle, padding: "9px 14px", cursor: "pointer" }} />
+          {avatarFile && <div style={{ fontSize: 11, color: GREEN, marginTop: 5 }}>✓ {avatarFile.name}</div>}
+        </div>
+
+        <div>
+          <label style={labelStyle}>WORK PHOTOS * (select multiple)</label>
+          <input type="file" accept="image/*" multiple onChange={e => setWorkFiles(Array.from(e.target.files))} style={{ ...inputStyle, padding: "9px 14px", cursor: "pointer" }} />
+          {workFiles.length > 0 && <div style={{ fontSize: 11, color: GREEN, marginTop: 5 }}>✓ {workFiles.length} photo{workFiles.length > 1 ? "s" : ""} selected</div>}
+        </div>
+
+        {saving && progress && (
+          <div style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 16px", fontSize: 13, color: GOLD }}>⏳ {progress}</div>
+        )}
+
+        <button onClick={handleCreate} disabled={saving} style={{ background: saving ? DARK3 : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: saving ? MUTED : "#0A0A0B", border: "none", borderRadius: 12, padding: "15px", fontWeight: 800, fontSize: 15, cursor: saving ? "not-allowed" : "pointer" }}>
+          {saving ? "Creating..." : "Create Pro & Publish to Explore →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN PANEL ───
 function AdminPanel({ onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -674,10 +834,11 @@ function AdminPanel({ onLogout }) {
     showNotif("Comment deleted");
   };
 
-  const navItems = [
+ const navItems = [
     { id: "overview", icon: "📊", label: "Overview" },
     { id: "users", icon: "👥", label: "Users" },
     { id: "professionals", icon: "✂️", label: "Professionals" },
+    { id: "addpro", icon: "➕", label: "Add Pro" },
     { id: "posts", icon: "🎬", label: "Posts & Feed" },
     { id: "comments", icon: "💬", label: "Comments" },
     { id: "bookings", icon: "📅", label: "Bookings" },
@@ -687,6 +848,7 @@ function AdminPanel({ onLogout }) {
     { id: "analytics", icon: "📈", label: "Analytics" },
     { id: "settings", icon: "⚙️", label: "Settings" },
   ];
+
 
   const filteredUsers = users.filter(u => {
     const matchType = userFilter === "all" || u.user_type === userFilter;
@@ -955,6 +1117,11 @@ function AdminPanel({ onLogout }) {
             </div>
           )}
 
+{/* ════════════════ ADD PRO ════════════════ */}
+          {!loading && activeTab === "addpro" && (
+            <AddProPanel showNotif={showNotif} onCreated={fetchAll} />
+          )}
+          
           {/* ════════════════ POSTS & FEED ════════════════ */}
           {!loading && activeTab === "posts" && (
             <div>
