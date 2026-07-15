@@ -20,9 +20,6 @@ const GREEN = "#4CAF50";
 const RED = "#FF5555";
 const BLUE = "#5B9BD5";
 
-const ADMIN_EMAIL = "c.sparkz.empire@gmail.com";
-const ADMIN_PASSWORD = "Csparkz777###";
-
 function StatusBadge({ status }) {
   const colors = {
     verified: { bg: `${GREEN}22`, color: GREEN, border: `${GREEN}44` },
@@ -56,16 +53,47 @@ function Btn({ children, onClick, color = GOLD, outline = false, danger = false,
   );
 }
 
-// ─── LOGIN ───
+// ─── LOGIN (real Supabase Auth) ───
 function AdminLogin({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [checking, setChecking] = useState(false);
 
-  const handleLogin = () => {
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) onLogin();
-    else setError("Invalid credentials. Access denied.");
+  const handleLogin = async () => {
+    setError("");
+    setChecking(true);
+
+    // 1. Real sign-in — Supabase verifies the password server-side
+    const { data, error: signInErr } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (signInErr) {
+      setChecking(false);
+      setError("Invalid credentials. Access denied.");
+      return;
+    }
+
+    // 2. Confirm this user is actually an admin
+    const { data: profile, error: profErr } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", data.user.id)
+      .maybeSingle();
+
+    if (profErr || !profile || !profile.is_admin) {
+      await supabase.auth.signOut();   // not an admin — kick them straight back out
+      setChecking(false);
+      setError("This account does not have admin access.");
+      return;
+    }
+
+    // 3. Verified admin — let them in
+    setChecking(false);
+    onLogin();
   };
 
   return (
@@ -91,7 +119,7 @@ function AdminLogin({ onLogin }) {
             <button onClick={() => setShowPass(s => !s)} style={{ position: "absolute", right: 12, bottom: 12, background: "none", border: "none", cursor: "pointer", fontSize: 16, color: MUTED }}>{showPass ? "🙈" : "👁️"}</button>
           </div>
           {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: RED }}>⚠️ {error}</div>}
-          <button onClick={handleLogin} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: "#0A0A0B", border: "none", borderRadius: 12, padding: "14px", fontWeight: 800, fontSize: 14, cursor: "pointer", marginTop: 6 }}>Access Admin Panel →</button>
+          <button onClick={handleLogin} disabled={checking} style={{ background: checking ? DARK3 : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: checking ? MUTED : "#0A0A0B", border: "none", borderRadius: 12, padding: "14px", fontWeight: 800, fontSize: 14, cursor: checking ? "not-allowed" : "pointer", marginTop: 6 }}>{checking ? "Verifying..." : "Access Admin Panel →"}</button>
         </div>
       </div>
     </div>
