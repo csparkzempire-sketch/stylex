@@ -579,7 +579,7 @@ function AddProPanel({ showNotif, onCreated }) {
         user_type: "professional",
         category: form.category,
         location: form.location.trim() || null,
-        country: form.country.trim() || null,
+        country: "ng",
         shop_price: form.shop_price ? parseInt(form.shop_price, 10) : null,
         bio: form.bio.trim() || null,
         phone: form.phone.trim() || null,

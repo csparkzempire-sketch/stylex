@@ -4126,7 +4126,12 @@ function StylexApp() {
   // Country-filtered pros for Explore
   const filteredByCountry = selectedCountry === "ALL"
     ? realPros
-    : realPros.filter(p => (p.country || "").toUpperCase() === selectedCountry);
+    : realPros.filter(p => {
+        const c = (p.country || "").toUpperCase();
+        const match = COUNTRIES.find(x => x.code === selectedCountry);
+        const name = (match?.name || "").toUpperCase();
+        return c === selectedCountry || c === name;
+      });
 
   if (loading) {
     return (
@@ -4190,7 +4195,7 @@ function StylexApp() {
               >
                 <option value="ALL">🌍 All Countries</option>
                 {COUNTRIES.map(c => (
-                  <option key={c.code} value={c.code}>{c.flag} {c.name}</option>
+                  <option key={c.code} value={c.name}>{c.flag} {c.name}</option>
                 ))}
               </select>
             </div>
