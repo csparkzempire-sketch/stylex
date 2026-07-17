@@ -86,23 +86,9 @@ async function registerPushNotifications(user) {
 const PRODUCT_COMMISSION_RATE = 0.05; // 5% on every product sold
 
 // ─── DEMO DATA ───
-const professionals = [
-  { id: 1, name: "Adaeze Okonkwo", handle: "@adaezeglow", category: "Hairstylist", location: "Lagos", avatar: "AO", rating: 4.9, reviews: 128, followers: "12.4K", shopPrice: 18000, mobilePrice: 25000, offersShop: true, offersMobile: true, bio: "Natural hair specialist. Crown jewels only.", tags: ["Braids", "Weave", "Locs"], verified: true, available: true, color: "#C9A84C" },
-  { id: 2, name: "Chukwudi Eze", handle: "@chukwudicuts", category: "Barber", location: "Abuja", avatar: "CE", rating: 4.8, reviews: 203, followers: "8.9K", shopPrice: 5000, mobilePrice: 8000, offersShop: true, offersMobile: true, bio: "Precision fades. Sharp lines. Clean finish.", tags: ["Fades", "Beards", "Designs"], verified: true, available: true, color: "#5C8CB5" },
-  { id: 3, name: "Fatima Al-Hassan", handle: "@fatimamua", category: "Makeup Artist", location: "Abuja", avatar: "FA", rating: 5.0, reviews: 87, followers: "22.1K", shopPrice: 25000, mobilePrice: 35000, offersShop: true, offersMobile: true, bio: "Celebrity MUA. Bridal & editorial specialist.", tags: ["Bridal", "Editorial", "Glam"], verified: true, available: false, color: "#B56C8A" },
-  { id: 4, name: "Blessing Nwosu", handle: "@blessingnails", category: "Nail Technician", location: "Port Harcourt", avatar: "BN", rating: 4.7, reviews: 156, followers: "6.3K", shopPrice: 8000, mobilePrice: 13000, offersShop: true, offersMobile: true, bio: "Nail art elevated. Gel, acrylic, chrome.", tags: ["Gel", "Acrylic", "3D Art"], verified: false, available: true, color: "#7C5CB5" },
-  { id: 5, name: "Amara Diallo", handle: "@amaralash", category: "Lash Tech", location: "Lagos", avatar: "AD", rating: 4.9, reviews: 94, followers: "15.7K", shopPrice: 12000, mobilePrice: 18000, offersShop: true, offersMobile: true, bio: "Lash queen. Volume, classic, hybrid.", tags: ["Volume", "Classic", "Hybrid"], verified: true, available: true, color: "#5CB58A" },
-  { id: 6, name: "Kemi Adeyemi", handle: "@kemiskin", category: "Skincare", location: "Lagos", avatar: "KA", rating: 4.6, reviews: 71, followers: "9.2K", shopPrice: 15000, mobilePrice: 22000, offersShop: true, offersMobile: true, bio: "Skin therapist. Glow treatments & facials.", tags: ["Facials", "Glow", "Acne"], verified: true, available: true, color: "#B58C5C" },
-];
+const professionals = [];
 
-const feedVideos = [
-  { id: 1, pro: professionals[0], title: "Knotless Braids Transformation ✨", likes: 4821, comments: 312, saves: 891, duration: "0:47", gradient: "linear-gradient(135deg, #1a0a2e 0%, #2d1654 100%)", emoji: "👑" },
-  { id: 2, pro: professionals[2], title: "Bridal Glam Tutorial 💄", likes: 9102, comments: 541, saves: 1420, duration: "1:12", gradient: "linear-gradient(135deg, #1a0818 0%, #3d1535 100%)", emoji: "💄" },
-  { id: 3, pro: professionals[1], title: "Skin Fade + Line Up 🔥", likes: 3156, comments: 201, saves: 432, duration: "0:38", gradient: "linear-gradient(135deg, #080e1a 0%, #112240 100%)", emoji: "✂️" },
-  { id: 4, pro: professionals[4], title: "Mega Volume Lash Set 👁️", likes: 6881, comments: 422, saves: 1354, duration: "1:28", gradient: "linear-gradient(135deg, #081a0e 0%, #0f3d1f 100%)", emoji: "👁️" },
-  { id: 5, pro: professionals[3], title: "Chrome Ombre Nail Art 💅", likes: 5644, comments: 389, saves: 1102, duration: "2:03", gradient: "linear-gradient(135deg, #0f0a1a 0%, #25154d 100%)", emoji: "💅" },
-  { id: 6, pro: professionals[5], title: "Glass Skin Routine ✨", likes: 7203, comments: 548, saves: 2100, duration: "1:45", gradient: "linear-gradient(135deg, #1a0e08 0%, #3d2010 100%)", emoji: "✨" },
-];
+const feedVideos = [];
 
 const categories = ["All", "Hair", "Makeup", "Barbing", "Nails", "Lashes", "Facial"];
 const timeSlots = ["9:00 AM", "10:00 AM", "11:00 AM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM"];
