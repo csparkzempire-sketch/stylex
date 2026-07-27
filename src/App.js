@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { MessagingScreen, MessageButton } from "./MessagingSystem";
+import PassportPage from "./PassportPage";
 
 // ─── SUPABASE ───
 const supabase = createClient(
@@ -3196,6 +3197,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
 
   const tabs = [
     { id: "bookings", icon: "📅", label: "Bookings" },
+    { id: "passport", icon: "🪪", label: "Passport" },
     { id: "saved", icon: "🔖", label: "Saved" },
     { id: "following", icon: "👥", label: "Following" },
     { id: "settings", icon: "⚙️", label: "Settings" },
@@ -3243,7 +3245,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
 
       {/* ── Tab Content ── */}
       <div style={{ padding: "20px" }}>
-        {loadingTab && activeTab !== "settings" && activeTab !== "saved" && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading...</div>}
+        {loadingTab && activeTab !== "settings" && activeTab !== "saved" && activeTab !== "passport" && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading...</div>}
 
         {/* Bookings Tab */}
         {!loadingTab && activeTab === "bookings" && (
@@ -3267,6 +3269,13 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
               ))}
             </div>
           )
+        )}
+
+        {/* Passport Tab */}
+        {activeTab === "passport" && (
+          <div style={{ margin: "-20px" }}>
+            <PassportPage />
+          </div>
         )}
 
         {/* Saved Tab */}
