@@ -604,6 +604,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const [savingGoal, setSavingGoal] = useState(false);
   const [competitorStats, setCompetitorStats] = useState(null); // { avg, min, max, count } shop_price in same category
   const [prefillBizMessage, setPrefillBizMessage] = useState(null);
+  const [categoryTrends, setCategoryTrends] = useState([]); // [{ service, count }] platform-wide, same category, last 30 days
 
   const [bizMessages, setBizMessages] = useState([
     { role: "assistant", text: "Hi! I'm your business assistant — ask me about your revenue, pricing, top services, or how to get more repeat clients." }
@@ -691,6 +692,22 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
           count: prices.length,
         });
       });
+  }, [category]);
+
+  // What's trending platform-wide in this pro's own category — real demand
+  // signal for the Business Assistant's pricing/marketing advice.
+  useEffect(() => {
+    if (!category) { setCategoryTrends([]); return; }
+    (async () => {
+      const { data: peers } = await supabase.from("profiles").select("id").eq("user_type", "professional").eq("category", category);
+      const peerIds = (peers || []).map(p => p.id);
+      if (peerIds.length === 0) { setCategoryTrends([]); return; }
+      const windowStart = new Date(); windowStart.setDate(windowStart.getDate() - 30);
+      const { data: rows } = await supabase.from("bookings").select("service, pro_id").eq("status", "confirmed").in("pro_id", peerIds).gte("created_at", windowStart.toISOString());
+      const counts = {};
+      (rows || []).forEach(b => { if (b.service) counts[b.service] = (counts[b.service] || 0) + 1; });
+      setCategoryTrends(Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([service, count]) => ({ service, count })));
+    })();
   }, [category]);
 
   // Sends a pre-filled question straight to the AI Assistant tab (used by the
@@ -825,6 +842,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
       last8WeeksRevenue: weeklyRevenue.map(w => w.revenue), // demand trend
       isAvailable, // availability signal
       competitorPricingInCategory: competitorStats, // { avg, min, max, count } shop_price for other pros in the same category
+      trendingInYourCategory: categoryTrends, // top booked services platform-wide in this category, last 30 days
     };
     try {
       const res = await fetch("/api/business-assistant", {
@@ -2686,12 +2704,27 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("All");
   const [bookModal, setBookModal] = useState(null);
+  const [trending, setTrending] = useState([]); // [{ service, count }] from real confirmed bookings, last 30 days
 
   // The Beauty Assistant can seed a search query (e.g. "wedding makeup")
   // via navRequest — a fresh object each time so repeat requests re-fire.
   useEffect(() => {
     if (navRequest?.search != null) setSearch(navRequest.search);
   }, [navRequest]);
+
+  // Trend Engine — pure data, no AI call. What's actually being booked right
+  // now beats a generated narrative for "what's trending."
+  useEffect(() => {
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() - 30);
+    supabase.from("bookings").select("service").eq("status", "confirmed").gte("created_at", windowStart.toISOString()).limit(500)
+      .then(({ data }) => {
+        const counts = {};
+        (data || []).forEach(b => { if (b.service) counts[b.service] = (counts[b.service] || 0) + 1; });
+        const ranked = Object.entries(counts).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8);
+        setTrending(ranked.map(([service, count]) => ({ service, count })));
+      });
+  }, []);
 
   const allPros = [...realPros, ...professionals];
   const filtered = allPros.filter(p => {
@@ -2803,6 +2836,24 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
           <button key={cat} onClick={() => setSelectedCat(cat)} style={{ background: selectedCat === cat ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : `${GOLD}11`, color: selectedCat === cat ? "#0A0A0B" : MUTED, border: selectedCat === cat ? "none" : `1px solid ${BORDER}`, borderRadius: 20, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{cat}</button>
         ))}
       </div>
+
+      {/* Trending — real demand, not a guess: ranked from actual confirmed bookings */}
+      {trending.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 14 }}>🔥</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: GOLD, letterSpacing: 1 }}>TRENDING NOW</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 4 }}>
+            {trending.map(t => (
+              <button key={t.service} onClick={() => setSearch(t.service)} style={{ flexShrink: 0, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "10px 16px", cursor: "pointer", textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{t.service}</div>
+                <div style={{ fontSize: 10, color: GOLD, marginTop: 2 }}>{t.count} booked this month</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Featured / Boosted section */}
       {boostedPros.length > 0 && (
