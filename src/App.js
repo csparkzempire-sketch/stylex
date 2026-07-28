@@ -603,6 +603,13 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const [goalInput, setGoalInput] = useState("");
   const [savingGoal, setSavingGoal] = useState(false);
 
+  const [bizMessages, setBizMessages] = useState([
+    { role: "assistant", text: "Hi! I'm your business assistant — ask me about your revenue, pricing, top services, or how to get more repeat clients." }
+  ]);
+  const [bizInput, setBizInput] = useState("");
+  const [bizSending, setBizSending] = useState(false);
+  const bizBottomRef = useRef(null);
+
   const [category, setCategory] = useState("");
   const [bio, setBio] = useState("");
   const [location, setLocation] = useState("");
@@ -661,6 +668,10 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     supabase.from("bookings").select("status, price, service, created_at").eq("pro_id", user.id)
       .then(({ data }) => { setBookings(data || []); setLoadingAnalytics(false); });
   }, [user]);
+
+  useEffect(() => {
+    if (dashTab === "assistant" && bizBottomRef.current) bizBottomRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [bizMessages, dashTab]);
 
   const handleSaveGoal = async () => {
     setSavingGoal(true);
@@ -753,6 +764,38 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const goalNum = parseInt(monthlyGoal) || 0;
   const goalPct = goalNum > 0 ? Math.min(100, Math.round((thisMonthRevenue / goalNum) * 100)) : null;
 
+  const sendBizMessage = async () => {
+    const text = bizInput.trim();
+    if (!text || bizSending) return;
+    const next = [...bizMessages, { role: "user", text }];
+    setBizMessages(next);
+    setBizInput("");
+    setBizSending(true);
+    const businessContext = {
+      category, servicesOffered: services,
+      shopPrice: parseInt(shopPrice) || 0, mobilePrice: parseInt(mobilePrice) || 0,
+      yearsExperience: yearsExperience || null, isVerified, isBoosted,
+      currency: "NGN",
+      revenueAllTime: totalRevenue, revenueThisMonth: thisMonthRevenue,
+      bookingsAllTime: confirmedBookings.length, bookingsThisMonth: thisMonthBookings.length,
+      pendingBookings: pendingCount, repeatCustomerPct,
+      topServices: topServices.map(([service, count]) => ({ service, bookings: count })),
+      monthlyRevenueGoal: goalNum || null, goalProgressPct: goalPct,
+    };
+    try {
+      const res = await fetch("/api/business-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: next.map(m => ({ role: m.role, content: m.text })), businessContext }),
+      });
+      const data = await res.json();
+      setBizMessages(m => [...m, { role: "assistant", text: data.reply || "Sorry, I couldn't get a response. Please try again." }]);
+    } catch {
+      setBizMessages(m => [...m, { role: "assistant", text: "Something went wrong. Please try again." }]);
+    }
+    setBizSending(false);
+  };
+
   if (loading) {
     return (
       <Modal onClose={onClose}>
@@ -772,7 +815,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${BORDER}` }}>
-        {[{ id: "overview", label: "Overview" }, { id: "profile", label: "Business Profile" }].map(t => (
+        {[{ id: "overview", label: "Overview" }, { id: "assistant", label: "AI Assistant" }, { id: "profile", label: "Business Profile" }].map(t => (
           <button key={t.id} onClick={() => setDashTab(t.id)} style={{ background: "none", border: "none", borderBottom: dashTab === t.id ? `2px solid ${GOLD}` : "2px solid transparent", padding: "8px 4px", marginBottom: -1, color: dashTab === t.id ? GOLD : MUTED, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t.label}</button>
         ))}
       </div>
@@ -863,6 +906,28 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
             )}
           </>
         )
+      )}
+
+      {dashTab === "assistant" && (
+        <div style={{ display: "flex", flexDirection: "column", height: 420 }}>
+          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, paddingBottom: 8 }}>
+            {bizMessages.map((m, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+                <div style={{ maxWidth: "85%", background: m.role === "user" ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3, color: m.role === "user" ? "#0A0A0B" : TEXT, borderRadius: m.role === "user" ? "14px 14px 2px 14px" : "14px 14px 14px 2px", padding: "10px 13px", fontSize: 13, lineHeight: 1.5 }}>{m.text}</div>
+              </div>
+            ))}
+            {bizSending && (
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                <div style={{ background: DARK3, borderRadius: "14px 14px 14px 2px", padding: "10px 14px", color: MUTED, fontSize: 13 }}>Thinking...</div>
+              </div>
+            )}
+            <div ref={bizBottomRef} />
+          </div>
+          <div style={{ display: "flex", gap: 8, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
+            <input value={bizInput} onChange={e => setBizInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendBizMessage()} placeholder="Ask about your revenue, pricing, bookings..." style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 12px", color: TEXT, fontSize: 13, outline: "none" }} />
+            <button onClick={sendBizMessage} disabled={bizSending} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 10, width: 38, height: 38, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>→</button>
+          </div>
+        </div>
       )}
 
       {dashTab === "profile" && (
