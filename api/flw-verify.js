@@ -1,3 +1,11 @@
+import webpush from "web-push";
+
+webpush.setVapidDetails(
+  process.env.VAPID_EMAIL,
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+);
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -40,12 +48,29 @@ export default async function handler(req, res) {
 
     // Apply the effect based on payment type
     if (type === "booking" && meta?.booking_id) {
-      await supabase.from("bookings").update({
+      const { data: booking } = await supabase.from("bookings").update({
         payment_status: "paid",
         flw_tx_ref: tx_ref,
         flw_tx_id: String(tx_id),
         status: "confirmed",
-      }).eq("id", meta.booking_id);
+      }).eq("id", meta.booking_id).select().maybeSingle();
+
+      if (booking?.client_id) {
+        const { data: sub } = await supabase.from("push_subscriptions").select("subscription").eq("user_id", booking.client_id).maybeSingle();
+        if (sub) {
+          try {
+            await webpush.sendNotification(sub.subscription, JSON.stringify({
+              title: "🎉 Booking confirmed!",
+              body: `${booking.service || "Your appointment"} on ${booking.date || ""} at ${booking.time || ""}`,
+              icon: "/logo192.png",
+              badge: "/logo192.png",
+              url: "https://app.stylex.pro",
+            }));
+          } catch (pushErr) {
+            console.error("booking-confirmed push failed:", pushErr);
+          }
+        }
+      }
     }
 
     if (type === "verification" && meta?.user_id) {

@@ -622,6 +622,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const [offersShop, setOffersShop] = useState(true);
   const [offersMobile, setOffersMobile] = useState(true);
   const [isAvailable, setIsAvailable] = useState(true);
+  const [wasAvailable, setWasAvailable] = useState(true); // tracks the last-loaded/saved value, to detect an off->on flip
   const [isVerified, setIsVerified] = useState(false);
   const [isBoosted, setIsBoosted] = useState(false);
   const [yearsExperience, setYearsExperience] = useState("");
@@ -650,6 +651,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         setOffersShop(data.offers_shop !== false);
         setOffersMobile(data.offers_mobile !== false);
         setIsAvailable(data.is_available !== false);
+        setWasAvailable(data.is_available !== false);
         setIsVerified(data.is_verified === true);
         setIsBoosted(data.is_boosted === true);
         setYearsExperience(data.years_experience ? String(data.years_experience) : "");
@@ -756,6 +758,17 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         intro_video_url: videoUrl || null,
       })
       .eq("id", user.id);
+
+    if (isAvailable && !wasAvailable) {
+      // Fire-and-forget — a failed notification shouldn't block saving the profile.
+      fetch("/api/notify-followers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pro_id: user.id, title: `${user.name} is now available`, body: "Book them before their slots fill up.", url: "https://app.stylex.pro" }),
+      }).catch(() => {});
+    }
+    setWasAvailable(isAvailable);
+
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -2266,6 +2279,13 @@ function CreatePostModal({ user, onClose, onPosted }) {
         comments: 0
       });
       if (insErr) { setError("Uploaded but couldn't save post: " + insErr.message); setUploading(false); return; }
+
+      // Fire-and-forget — a failed notification shouldn't block the post itself.
+      fetch("/api/notify-followers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pro_id: user.id, title: `${user.name} just posted new work`, body: caption.trim() || "Check out their latest post on Stylex", url: "https://app.stylex.pro" }),
+      }).catch(() => {});
 
       setUploading(false);
       setDone(true);
