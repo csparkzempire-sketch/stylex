@@ -2119,10 +2119,16 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
 }
 
 // ─── EXPLORE SCREEN ───
-function ExploreScreen({ onProfile, user, realPros = [] }) {
+function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("All");
   const [bookModal, setBookModal] = useState(null);
+
+  // The Beauty Assistant can seed a search query (e.g. "wedding makeup")
+  // via navRequest — a fresh object each time so repeat requests re-fire.
+  useEffect(() => {
+    if (navRequest?.search != null) setSearch(navRequest.search);
+  }, [navRequest]);
 
   const allPros = [...realPros, ...professionals];
   const filtered = allPros.filter(p => {
@@ -3143,9 +3149,15 @@ function HelpSupportPage({ onBack, user }) {
 }
 
 // ─── PROFILE SCREEN (CLIENT) ───
-function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
+function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0, navRequest }) {
   const [activeTab, setActiveTab] = useState("bookings");
   const [settingsPage, setSettingsPage] = useState(null); // "notifications"|"privacy"|"payment"|"language"|"help"
+
+  // The Beauty Assistant can jump straight to a sub-tab (e.g. "passport",
+  // "foryou") via navRequest — a fresh object each time so repeat requests re-fire.
+  useEffect(() => {
+    if (navRequest?.tab) setActiveTab(navRequest.tab);
+  }, [navRequest]);
   const [showEdit, setShowEdit] = useState(false);
   const [myAvatar, setMyAvatar] = useState("");
   const [myUsername, setMyUsername] = useState("");
@@ -3583,8 +3595,14 @@ function ReviewsTab({ proDbId, user, proName }) {
 }
 
 // ─── PRO PROFILE SCREEN ───
-function ProProfileScreen({ pro, user, onBack, onBook }) {
+function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
   const [activeTab, setActiveTab] = useState("posts");
+
+  // The Beauty Assistant can jump straight to a sub-tab (e.g. "passport")
+  // via navRequest — a fresh object each time so repeat requests re-fire.
+  useEffect(() => {
+    if (navRequest?.tab) setActiveTab(navRequest.tab);
+  }, [navRequest]);
   const [showEdit, setShowEdit] = useState(false);
   const [showDash, setShowDash] = useState(false);
   const [showSub, setShowSub] = useState(false);
@@ -3966,18 +3984,33 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
 }
 
 // ─── STYLEX ASSISTANT (AI CHATBOT) ───
-function StylexAssistant({ user }) {
+const ASSISTANT_ACTION_LABELS = {
+  show_matches: "See my matches",
+  search_pros: "Search pros",
+  open_passport: "Open my passport",
+};
+
+function StylexAssistant({ user, onAction }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "Hi! I'm your STYLEX beauty assistant ✨ Ask me anything about hair, makeup, skincare, or finding the right professional." }
+    { role: "assistant", text: "Hi! I'm your STYLEX beauty assistant ✨ I use your Beauty Passport to give personal advice — ask me for a style, or say what you're looking to book." }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [passport, setPassport] = useState(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
     if (open && bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth" });
   }, [messages, open]);
+
+  // Load the user's Beauty Passport once (or when they sign in) so the
+  // assistant can give personalised answers.
+  useEffect(() => {
+    if (!user) { setPassport(null); return; }
+    supabase.from("beauty_passports").select("*").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => setPassport(data || null));
+  }, [user]);
 
   const send = async () => {
     const text = input.trim();
@@ -3987,17 +4020,25 @@ function StylexAssistant({ user }) {
     setMessages(newMessages);
     setLoading(true);
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages.map(m => ({ role: m.role, content: m.text })) })
+        body: JSON.stringify({
+          messages: newMessages.map(m => ({ role: m.role, content: m.text })),
+          passport,
+        })
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "assistant", text: data.reply || "Sorry, I couldn't get a response. Please try again." }]);
+      setMessages(prev => [...prev, { role: "assistant", text: data.reply || "Sorry, I couldn't get a response. Please try again.", action: data.action || null }]);
     } catch {
       setMessages(prev => [...prev, { role: "assistant", text: "Something went wrong. Please try again." }]);
     }
     setLoading(false);
+  };
+
+  const runAction = (action) => {
+    if (typeof onAction === "function") onAction(action);
+    setOpen(false);
   };
 
   return (
@@ -4017,8 +4058,14 @@ function StylexAssistant({ user }) {
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
             {messages.map((m, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
                 <div style={{ maxWidth: "80%", background: m.role === "user" ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK3, color: m.role === "user" ? "#0A0A0B" : TEXT, borderRadius: m.role === "user" ? "14px 14px 2px 14px" : "14px 14px 14px 2px", padding: "10px 13px", fontSize: 13, lineHeight: 1.5 }}>{m.text}</div>
+                {m.action && (
+                  <button onClick={() => runAction(m.action)} style={{ marginTop: 6, background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 20, padding: "7px 13px", color: GOLD, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    {ASSISTANT_ACTION_LABELS[m.action.type] || "Open"}
+                    {m.action.type === "search_pros" && m.action.query ? `: ${m.action.query}` : ""} →
+                  </button>
+                )}
               </div>
             ))}
             {loading && (
@@ -4052,6 +4099,25 @@ function StylexApp() {
   const [profileRefresh, setProfileRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedCountry, setSelectedCountry] = useState("ALL");
+  const [profileNav, setProfileNav] = useState(null);   // { tab } — jumps ProfileScreen/ProProfileScreen to a sub-tab
+  const [exploreNav, setExploreNav] = useState(null);    // { search } — seeds ExploreScreen's search box
+
+  // Runs the whitelisted actions returned by the Beauty Assistant (see api/assistant.js).
+  // Never books or pays — only navigates the user to the real flow to finish there.
+  const handleAssistantAction = (action) => {
+    if (!action) return;
+    setViewingPro(null); // exit any single-pro view so the tab UI is visible
+    if (action.type === "show_matches") {
+      setActiveTab("profile");
+      setProfileNav({ tab: "foryou" });
+    } else if (action.type === "open_passport") {
+      setActiveTab("profile");
+      setProfileNav({ tab: "passport" });
+    } else if (action.type === "search_pros") {
+      setActiveTab("explore");
+      setExploreNav({ search: action.query || "" });
+    }
+  };
 
   // Load Flutterwave checkout script
   useEffect(() => {
@@ -4176,7 +4242,7 @@ function StylexApp() {
           onBack={() => setViewingPro(null)}
           onBook={(pro) => { setViewingPro(null); setBookingPro(pro); }}
         />
-        <StylexAssistant user={user} />
+        <StylexAssistant user={user} onAction={handleAssistantAction} />
         {bookingPro && <BookingModal pro={bookingPro} user={user} onClose={() => setBookingPro(null)} />}
       </div>
     );
@@ -4224,6 +4290,7 @@ function StylexApp() {
             onProfile={(pro) => setViewingPro(pro)}
             user={user}
             realPros={filteredByCountry}
+            navRequest={exploreNav}
           />
         </div>
       )}
@@ -4267,6 +4334,7 @@ function StylexApp() {
               user={user}
               onBack={() => {}}
               onBook={() => {}}
+              navRequest={profileNav}
             />
           ) : (
             <ProfileScreen
@@ -4274,6 +4342,7 @@ function StylexApp() {
               onLogout={handleLogout}
               onUserUpdate={handleUserUpdate}
               refreshKey={profileRefresh}
+              navRequest={profileNav}
             />
           )
         ) : (
@@ -4342,7 +4411,7 @@ function StylexApp() {
       </div>
 
       {/* ── Floating AI Assistant ── */}
-      <StylexAssistant user={user} />
+      <StylexAssistant user={user} onAction={handleAssistantAction} />
 
       {/* ── Modals ── */}
       {showCreatePost && (
