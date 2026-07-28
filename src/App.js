@@ -1217,16 +1217,22 @@ function StyleImage({ style, scanType }) {
 }
 
 // ─── AI SCANNER (REAL CAMERA + CLAUDE VISION) ───
-function AIScannerModal({ onClose, realPros = [], onBookPro }) {
+function AIScannerModal({ onClose, realPros = [], user, onBookPro }) {
   const [step, setStep] = useState("choose");
   const [scanType, setScanType] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [portfolioWork, setPortfolioWork] = useState([]);
+  const [fullScanMatches, setFullScanMatches] = useState([]); // AI-ranked pros for the full scan
+  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [savingPassport, setSavingPassport] = useState(false);
+  const [savedPassport, setSavedPassport] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+
+  const isFullScan = scanType === "full";
 
   const scanTypes = [
     { id: "face", icon: "😊", label: "Face Shape", desc: "Find makeup & skincare styles" },
@@ -1240,6 +1246,7 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
     hair: ["Hairstylist", "Barber"],
     nails: ["Nail Technician", "Nail Tech"],
     skin: ["Skincare", "Makeup Artist"],
+    full: ["Hairstylist", "Barber", "Makeup Artist", "Skincare"],
   };
 
   const allPros = [...realPros, ...professionals];
@@ -1332,9 +1339,75 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
           setPortfolioWork(filtered);
         }
       }
+
+      if (scanType === "full") await rankMatchesForFullScan(data);
     } catch (err) {
       setErrorMsg("Something went wrong analyzing your photo. Please try again.");
       setStep("error");
+    }
+  };
+
+  // Reuses the same AI ranking endpoint Smart Recommendations uses, instead
+  // of the crude category-text filter — so full-scan matches come with a
+  // "why this fits you" reason.
+  const rankMatchesForFullScan = async (scanResult) => {
+    setLoadingMatches(true);
+    try {
+      const realOnly = allPros.filter(p => typeof p.id === "string" && p.id.startsWith("db-")).slice(0, 20);
+      if (realOnly.length === 0) { setFullScanMatches([]); return; }
+
+      // Slim payload just for the ranking call — booking needs the FULL pro
+      // object (shopPrice, tags, offersShop, ...), so we merge the AI's
+      // reason/score back onto the real pro below, not onto this slim shape.
+      const slim = realOnly.map(p => ({
+        id: p.id,
+        name: p.name,
+        specialties: p.tags ? p.tags.join(", ") : p.category,
+        price_range: (p.shopPrice || p.mobilePrice) ? `₦${(p.shopPrice || p.mobilePrice).toLocaleString()}+` : null,
+        location: p.location,
+        bio: p.bio,
+        verified: p.verified,
+        years_experience: p.yearsExperience,
+        languages: p.languages ? p.languages.join(", ") : null,
+        certifications: p.certifications ? p.certifications.join(", ") : null,
+        repeat_customer_pct: p.repeatCustomerPct,
+      }));
+
+      const resp = await fetch("/api/recommend-pros", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passport: scanResult, pros: slim }),
+      });
+      const out = await resp.json();
+      const ranked = out.ranked || [];
+      const byId = Object.fromEntries(realOnly.map(p => [p.id, p]));
+      setFullScanMatches(ranked.map(r => byId[r.pro_id] ? { ...byId[r.pro_id], reason: r.reason, score: r.score } : null).filter(Boolean).slice(0, 5));
+    } catch {
+      setFullScanMatches([]); // falls back to the plain matchedPros list below
+    } finally {
+      setLoadingMatches(false);
+    }
+  };
+
+  const saveToPassport = async (scanResult) => {
+    if (!user) { alert("Please sign in to save this to your Beauty Passport."); return; }
+    setSavingPassport(true);
+    try {
+      const { data: existing } = await supabase.from("beauty_passports").select("*").eq("user_id", user.id).maybeSingle();
+      const fields = ["face_shape", "hair_type", "hair_density", "hairline", "skin_tone", "skin_type", "beard_style"];
+      const merged = { ...(existing || {}) };
+      for (const f of fields) {
+        // Never overwrite what the user already filled in themselves.
+        if (!merged[f] && scanResult[f]) merged[f] = scanResult[f];
+      }
+      const payload = { ...merged, user_id: user.id, updated_at: new Date().toISOString() };
+      const { error } = await supabase.from("beauty_passports").upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
+      setSavedPassport(true);
+    } catch (err) {
+      alert("Could not save to your Beauty Passport: " + (err.message || "unknown error"));
+    } finally {
+      setSavingPassport(false);
     }
   };
 
@@ -1345,6 +1418,8 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
     setResult(null);
     setErrorMsg("");
     setPortfolioWork([]);
+    setFullScanMatches([]);
+    setSavedPassport(false);
     setStep("choose");
   };
 
@@ -1363,15 +1438,25 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
       {step === "choose" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {scanTypes.map(s => (
-            <button key={s.id} onClick={() => startCamera(s.id)} style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "18px 14px", cursor: "pointer", textAlign: "center" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>{s.icon}</div>
-              <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 4 }}>{s.label}</div>
-              <div style={{ fontSize: 11, color: MUTED }}>{s.desc}</div>
-            </button>
-          ))}
-        </div>
+        <>
+          <button onClick={() => startCamera("full")} style={{ width: "100%", background: `linear-gradient(135deg, ${GOLD}22, ${DARK3})`, border: `1.5px solid ${GOLD}66`, borderRadius: 16, padding: "20px 16px", cursor: "pointer", textAlign: "center", marginBottom: 16 }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>🪄</div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: GOLD, marginBottom: 4 }}>Full Beauty Scan</div>
+            <div style={{ fontSize: 12, color: `${TEXT}bb`, lineHeight: 1.5 }}>One selfie — face shape, hair, skin & beard analyzed together, with matched pros ranked for you</div>
+          </button>
+
+          <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10, textAlign: "center" }}>OR SCAN ONE THING</div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {scanTypes.map(s => (
+              <button key={s.id} onClick={() => startCamera(s.id)} style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "18px 14px", cursor: "pointer", textAlign: "center" }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>{s.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 4 }}>{s.label}</div>
+                <div style={{ fontSize: 11, color: MUTED }}>{s.desc}</div>
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {step === "camera" && (
@@ -1396,19 +1481,89 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
           )}
           <div style={{ fontSize: 32, marginBottom: 10 }}>🤖</div>
           <div style={{ color: GOLD, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Analyzing your photo...</div>
-          <div style={{ color: MUTED, fontSize: 12 }}>Our AI is studying your {scanType}</div>
+          <div style={{ color: MUTED, fontSize: 12 }}>{isFullScan ? "Our AI is studying your face, hair & skin" : `Our AI is studying your ${scanType}`}</div>
         </div>
       )}
 
       {step === "results" && result && (
         <div>
-          <div style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 16, marginBottom: 16, textAlign: "center" }}>
-            {capturedImage && (
-              <img src={capturedImage} alt="you" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: "50%", border: `2px solid ${GOLD}`, marginBottom: 10, transform: "scaleX(-1)" }} />
-            )}
-            <div style={{ fontWeight: 800, fontSize: 16, color: GOLD, marginBottom: 6 }}>{result.type}</div>
-            <div style={{ fontSize: 13, color: `${TEXT}99`, lineHeight: 1.6 }}>{result.description}</div>
-          </div>
+          {!isFullScan && (
+            <div style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 16, marginBottom: 16, textAlign: "center" }}>
+              {capturedImage && (
+                <img src={capturedImage} alt="you" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: "50%", border: `2px solid ${GOLD}`, marginBottom: 10, transform: "scaleX(-1)" }} />
+              )}
+              <div style={{ fontWeight: 800, fontSize: 16, color: GOLD, marginBottom: 6 }}>{result.type}</div>
+              <div style={{ fontSize: 13, color: `${TEXT}99`, lineHeight: 1.6 }}>{result.description}</div>
+            </div>
+          )}
+
+          {isFullScan && (
+            <div style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 14, padding: 16, marginBottom: 16 }}>
+              <div style={{ textAlign: "center", marginBottom: 12 }}>
+                {capturedImage && (
+                  <img src={capturedImage} alt="you" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: "50%", border: `2px solid ${GOLD}`, marginBottom: 10, transform: "scaleX(-1)" }} />
+                )}
+                <div style={{ fontSize: 13, color: `${TEXT}99`, lineHeight: 1.6 }}>{result.summary}</div>
+                {result.confidence != null && (
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
+                    {Math.round(result.confidence * 100)}% confidence{result.confidence_note ? ` — ${result.confidence_note}` : ""}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                {[
+                  ["Face", result.face_shape], ["Hair", result.hair_type], ["Density", result.hair_density],
+                  ["Hairline", result.hairline], ["Skin", result.skin_tone], ["Skin type", result.skin_type],
+                  ["Beard", result.beard_style],
+                ].filter(([, v]) => v).map(([label, value]) => (
+                  <span key={label} style={{ fontSize: 11, color: GOLD, background: `${GOLD}11`, border: `1px solid ${GOLD}33`, borderRadius: 20, padding: "4px 10px" }}>{label}: {value}</span>
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+                <button onClick={() => saveToPassport(result)} disabled={savingPassport || savedPassport} style={{ background: savedPassport ? `${GREEN}15` : "transparent", border: `1px solid ${savedPassport ? GREEN : GOLD}55`, borderRadius: 20, color: savedPassport ? GREEN : GOLD, padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: savedPassport ? "default" : "pointer" }}>
+                  {savedPassport ? "✓ Saved to your Beauty Passport" : savingPassport ? "Saving..." : "💾 Save to my Beauty Passport"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isFullScan && result.beard_styles && result.beard_styles.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>BEARD & GROOMING STYLES</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {result.beard_styles.slice(0, 4).map(style => <StyleImage key={style} style={style} scanType="hair" />)}
+              </div>
+            </div>
+          )}
+
+          {isFullScan && result.makeup_looks && result.makeup_looks.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>MAKEUP LOOKS FOR YOU</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {result.makeup_looks.slice(0, 4).map(style => <StyleImage key={style} style={style} scanType="face" />)}
+              </div>
+            </div>
+          )}
+
+          {isFullScan && result.skincare_routine && result.skincare_routine.length > 0 && (
+            <div style={{ background: DARK3, borderRadius: 12, padding: 14, marginBottom: 16, border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>🧴 SUGGESTED SKINCARE ROUTINE</div>
+              <ul style={{ margin: 0, paddingLeft: 18, color: `${TEXT}cc`, fontSize: 13, lineHeight: 1.8 }}>
+                {result.skincare_routine.map((step, i) => <li key={i}>{step}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {isFullScan && result.colour_recommendations && result.colour_recommendations.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>🎨 COLOURS THAT SUIT YOU</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {result.colour_recommendations.map(c => (
+                  <span key={c} style={{ fontSize: 12, color: TEXT, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 20, padding: "6px 12px" }}>{c}</span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {portfolioWork.length > 0 && (
             <div style={{ marginBottom: 16 }}>
@@ -1454,7 +1609,7 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
             </div>
           )}
 
-          {matchedPros.length > 0 && (
+          {!isFullScan && matchedPros.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>✨ PROS WHO CAN DO THIS FOR YOU</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1475,6 +1630,43 @@ function AIScannerModal({ onClose, realPros = [], onBookPro }) {
               </div>
             </div>
           )}
+
+          {isFullScan && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>✨ MATCHED FOR YOU</div>
+              {loadingMatches ? (
+                <div style={{ textAlign: "center", padding: "16px 0", color: MUTED, fontSize: 12 }}>Ranking pros for your results...</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {(fullScanMatches.length > 0 ? fullScanMatches : matchedPros).map(pro => (
+                    <div key={pro.id} style={{ background: DARK3, borderRadius: 12, padding: "10px 12px", border: `1px solid ${BORDER}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <Avatar initials={pro.avatar || (pro.name || "P").slice(0, 2).toUpperCase()} size={42} color={pro.color || GOLD} img={pro.avatarUrl} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>{pro.name}</span>
+                            <VerifiedBadge verified={pro.verified} size={13} />
+                          </div>
+                          <div style={{ fontSize: 11, color: MUTED }}>{pro.category || pro.specialties} · {pro.location}</div>
+                          <div style={{ fontSize: 12, color: GOLD, fontWeight: 700 }}>{pro.price_range || `from ₦${(pro.shopPrice || pro.mobilePrice || 0).toLocaleString()}`}</div>
+                        </div>
+                        <button onClick={() => { handleClose(); if (onBookPro) onBookPro(pro); }} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 8, color: "#0A0A0B", padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Book</button>
+                      </div>
+                      {pro.reason && (
+                        <div style={{ marginTop: 8, fontSize: 11.5, color: `${TEXT}bb`, lineHeight: 1.5 }}>
+                          <span style={{ color: GOLD, fontWeight: 600 }}>Why this fits · </span>{pro.reason}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {fullScanMatches.length === 0 && matchedPros.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "12px 0", color: MUTED, fontSize: 12 }}>No matching pros yet.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 10 }}>
             <GoldBtn onClick={reset} outline style={{ flex: 1 }}>Scan Again</GoldBtn>
             <GoldBtn onClick={handleClose} style={{ flex: 1 }}>Done ✨</GoldBtn>
@@ -4800,6 +4992,7 @@ function StylexApp() {
         <AIScannerModal
           onClose={() => { setShowScanner(false); setScannerBookPro(null); }}
           realPros={realPros}
+          user={user}
           onBookPro={(pro) => { setScannerBookPro(pro); setShowScanner(false); }}
         />
       )}
