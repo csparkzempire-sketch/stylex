@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { MessagingScreen, MessageButton } from "./MessagingSystem";
 import PassportPage from "./PassportPage";
+import BeautyPassport from "./BeautyPassport";
 
 // ─── SUPABASE ───
 const supabase = createClient(
@@ -3659,6 +3660,7 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
 
   const tabs = [
     { id: "posts", icon: "▦", label: "Posts" },
+    { id: "passport", icon: "🪪", label: "Passport" },
     { id: "portfolio", icon: "🖼", label: "Portfolio" },
     { id: "services", icon: "💼", label: "Services" },
     { id: "products", icon: "🛍", label: "Products" },
@@ -3744,6 +3746,20 @@ function ProProfileScreen({ pro, user, onBack, onBook }) {
       {/* Tab content */}
       <div style={{ padding: "16px 16px" }}>
         {loadingTab && <div style={{ textAlign: "center", padding: 30, color: MUTED, fontSize: 13 }}>Loading...</div>}
+
+        {/* Passport (owner only) */}
+        {activeTab === "passport" && (
+          isOwner ? (
+            <div style={{ margin: "-16px" }}>
+              <BeautyPassport userId={user.id} />
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🔒</div>
+              <p style={{ color: MUTED, fontSize: 13 }}>This professional's Beauty Passport is private.</p>
+            </div>
+          )
+        )}
 
         {/* Posts grid */}
         {!loadingTab && activeTab === "posts" && (

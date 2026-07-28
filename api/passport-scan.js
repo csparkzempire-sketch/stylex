@@ -18,6 +18,11 @@ const ALLOWED = {
   beard_style:  ["None", "Clean Shaven", "Stubble", "Short Beard", "Full Beard", "Goatee", "Van Dyke"],
 };
 
+// A field only survives into the response if the model's own confidence
+// in that specific field clears this bar — otherwise it's left null so a
+// shaky guess never silently overwrites what the user typed.
+const FIELD_CONFIDENCE_THRESHOLD = 0.6;
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -37,7 +42,7 @@ export default async function handler(req, res) {
     const prompt =
 `You are a cosmetic styling assistant for Stylex (not medical). Look at this selfie and describe the person's visible beauty attributes for their profile.
 
-Return ONLY a JSON object — no markdown, no commentary. For each key, pick EXACTLY ONE value from its list, or use null if you genuinely cannot tell from the photo:
+Return ONLY a JSON object — no markdown, no commentary. For each of these keys, pick EXACTLY ONE value from its list, or null if you cannot tell from the photo:
 
 face_shape: ${ALLOWED.face_shape.join(" | ")}
 hair_type: ${ALLOWED.hair_type.join(" | ")}
@@ -47,11 +52,16 @@ skin_tone: ${ALLOWED.skin_tone.join(" | ")}
 skin_type: ${ALLOWED.skin_type.join(" | ")}
 beard_style: ${ALLOWED.beard_style.join(" | ")}
 
-Also include:
-confidence: a number from 0 to 1 for overall reliability
-note: one short, friendly sentence for the user (max 16 words)
+Also return a "confidences" object with one entry per key above, each a number from 0 to 1 for how sure you are of THAT specific field — judge each independently, not just an overall impression. And a "note": one short, friendly sentence for the user (max 16 words).
 
-Rules: Never infer medical or health conditions. If the image is dark, blurry, or the face isn't clearly visible, set fields to null and lower the confidence. Output the JSON object only.`;
+Rules:
+- Never infer medical or health conditions.
+- Be conservative: if you are not genuinely confident about a field, set its value to null and give it a low confidence score rather than guessing a plausible-sounding answer.
+- Hair density, hairline, and skin type are the easiest to get wrong from a single photo — only commit to them when the photo clearly shows enough to judge, otherwise null.
+- If the image overall is dark, blurry, at a bad angle, or the face isn't clearly visible, set the affected fields to null and their confidences low.
+
+Respond with the JSON object only, shaped like:
+{"face_shape": "...", "hair_type": "...", "hair_density": "...", "hairline": "...", "skin_tone": "...", "skin_type": "...", "beard_style": "...", "confidences": {"face_shape": 0.0, "hair_type": 0.0, "hair_density": 0.0, "hairline": 0.0, "skin_tone": 0.0, "skin_type": 0.0, "beard_style": 0.0}, "note": "..."}`;
 
     const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -61,8 +71,9 @@ Rules: Never infer medical or health conditions. If the image is dark, blurry, o
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-5",
-        max_tokens: 400,
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 500,
+        temperature: 0,
         messages: [{
           role: "user",
           content: [
@@ -96,12 +107,19 @@ Rules: Never infer medical or health conditions. If the image is dark, blurry, o
       return res.status(502).json({ error: "Couldn't read the scan result. Try again." });
     }
 
-    // Whitelist: only genuine enum values pass through; everything else -> null.
+    // Whitelist: only genuine enum values pass through, and only when the
+    // model's own per-field confidence clears the bar — everything else -> null.
+    const confidences = parsed.confidences && typeof parsed.confidences === "object" ? parsed.confidences : {};
     const result = {};
     for (const key of Object.keys(ALLOWED)) {
-      result[key] = ALLOWED[key].includes(parsed[key]) ? parsed[key] : null;
+      const value = ALLOWED[key].includes(parsed[key]) ? parsed[key] : null;
+      const fieldConfidence = typeof confidences[key] === "number" ? confidences[key] : 0;
+      result[key] = value !== null && fieldConfidence >= FIELD_CONFIDENCE_THRESHOLD ? value : null;
     }
-    result.confidence = typeof parsed.confidence === "number" ? parsed.confidence : null;
+    const scoredConfidences = Object.keys(ALLOWED).map((k) => confidences[k]).filter((c) => typeof c === "number");
+    result.confidence = scoredConfidences.length
+      ? scoredConfidences.reduce((a, b) => a + b, 0) / scoredConfidences.length
+      : null;
     result.note = typeof parsed.note === "string" ? parsed.note.slice(0, 140) : null;
 
     return res.status(200).json(result);
