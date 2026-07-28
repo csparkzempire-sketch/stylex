@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { MessagingScreen, MessageButton } from "./MessagingSystem";
 import PassportPage from "./PassportPage";
 import BeautyPassport from "./BeautyPassport";
+import RecommendationsPage from "./RecommendationsPage";
 
 // ─── SUPABASE ───
 const supabase = createClient(
@@ -3199,6 +3200,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
   const tabs = [
     { id: "bookings", icon: "📅", label: "Bookings" },
     { id: "passport", icon: "🪪", label: "Passport" },
+    { id: "foryou", icon: "🎯", label: "For You" },
     { id: "saved", icon: "🔖", label: "Saved" },
     { id: "following", icon: "👥", label: "Following" },
     { id: "settings", icon: "⚙️", label: "Settings" },
@@ -3276,6 +3278,13 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0 }) {
         {activeTab === "passport" && (
           <div style={{ margin: "-20px" }}>
             <PassportPage />
+          </div>
+        )}
+
+        {/* For You Tab */}
+        {activeTab === "foryou" && (
+          <div style={{ margin: "-20px" }}>
+            <RecommendationsPage />
           </div>
         )}
 
