@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { MessagingScreen, MessageButton } from "./MessagingSystem";
 import PassportPage from "./PassportPage";
 import BeautyPassport from "./BeautyPassport";
@@ -584,12 +585,23 @@ function SubscriptionModal({ user, onClose, onUpdated }) {
 }
 
 // ─── PRO DASHBOARD ───
-function ProDashboard({ user, onClose, onOpenSubscription }) {
+// A pro's take-home share of a booking's gross price — matches the platform's
+// hardcoded 20% commission (see COMMISSION_RATE in BookingModal / AdminDashboard_1.jsx).
+const PRO_REVENUE_SHARE = 0.80;
+
+function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = null }) {
   const CATEGORIES = ["Hairstylist", "Barber", "Makeup Artist", "Nail Technician", "Lash Tech", "Skincare"];
 
+  const [dashTab, setDashTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const [bookings, setBookings] = useState([]);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+  const [monthlyGoal, setMonthlyGoal] = useState("");
+  const [goalInput, setGoalInput] = useState("");
+  const [savingGoal, setSavingGoal] = useState(false);
 
   const [category, setCategory] = useState("");
   const [bio, setBio] = useState("");
@@ -635,11 +647,28 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
         setLanguages(data.languages || "");
         setCertifications(data.certifications || "");
         setIntroVideoUrl(data.intro_video_url || "");
+        setMonthlyGoal(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
+        setGoalInput(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
       }
       setLoading(false);
     };
     loadProfile();
   }, [user]);
+
+  useEffect(() => {
+    if (!user) { setLoadingAnalytics(false); return; }
+    setLoadingAnalytics(true);
+    supabase.from("bookings").select("status, price, service, created_at").eq("pro_id", user.id)
+      .then(({ data }) => { setBookings(data || []); setLoadingAnalytics(false); });
+  }, [user]);
+
+  const handleSaveGoal = async () => {
+    setSavingGoal(true);
+    const goal = parseInt(goalInput) || null;
+    await supabase.from("profiles").update({ monthly_revenue_goal: goal }).eq("id", user.id);
+    setMonthlyGoal(goal ? String(goal) : "");
+    setSavingGoal(false);
+  };
 
   const handleVideoChange = (e) => {
     const f = e.target.files && e.target.files[0];
@@ -696,6 +725,34 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
   const labelStyle = { fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
   const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 16, boxSizing: "border-box" };
 
+  // ── Analytics (derived from raw bookings — no extra columns needed) ──
+  const confirmedBookings = bookings.filter(b => b.status === "confirmed");
+  const grossOf = (rows) => rows.reduce((s, b) => s + (b.price || 0), 0);
+  const proRevenueOf = (rows) => Math.round(grossOf(rows) * PRO_REVENUE_SHARE);
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonthBookings = confirmedBookings.filter(b => new Date(b.created_at) >= startOfMonth);
+
+  const totalRevenue = proRevenueOf(confirmedBookings);
+  const thisMonthRevenue = proRevenueOf(thisMonthBookings);
+  const pendingCount = bookings.filter(b => b.status === "pending").length;
+
+  const serviceCounts = {};
+  confirmedBookings.forEach(b => { if (b.service) serviceCounts[b.service] = (serviceCounts[b.service] || 0) + 1; });
+  const topServices = Object.entries(serviceCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const weeklyRevenue = Array.from({ length: 8 }, (_, i) => {
+    const idx = 7 - i;
+    const start = new Date(now); start.setDate(now.getDate() - idx * 7);
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    const rows = confirmedBookings.filter(b => { const d = new Date(b.created_at); return d >= start && d < end; });
+    return { label: `W${8 - idx}`, revenue: proRevenueOf(rows) };
+  });
+
+  const goalNum = parseInt(monthlyGoal) || 0;
+  const goalPct = goalNum > 0 ? Math.min(100, Math.round((thisMonthRevenue / goalNum) * 100)) : null;
+
   if (loading) {
     return (
       <Modal onClose={onClose}>
@@ -706,13 +763,110 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
 
   return (
     <Modal onClose={onClose}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div>
           <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Pro Dashboard</h3>
-          <span style={{ fontSize: 12, color: MUTED }}>Set up your business profile</span>
+          <span style={{ fontSize: 12, color: MUTED }}>Your business, at a glance</span>
         </div>
         <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
       </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${BORDER}` }}>
+        {[{ id: "overview", label: "Overview" }, { id: "profile", label: "Business Profile" }].map(t => (
+          <button key={t.id} onClick={() => setDashTab(t.id)} style={{ background: "none", border: "none", borderBottom: dashTab === t.id ? `2px solid ${GOLD}` : "2px solid transparent", padding: "8px 4px", marginBottom: -1, color: dashTab === t.id ? GOLD : MUTED, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t.label}</button>
+        ))}
+      </div>
+
+      {dashTab === "overview" && (
+        loadingAnalytics ? (
+          <div style={{ textAlign: "center", padding: "30px 0", color: MUTED }}>Loading your numbers...</div>
+        ) : confirmedBookings.length === 0 && pendingCount === 0 ? (
+          <div style={{ textAlign: "center", padding: "30px 0" }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>📊</div>
+            <p style={{ color: MUTED, fontSize: 13 }}>No bookings yet — your revenue and stats will show up here once clients start booking you.</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[
+                { label: "This month", value: `₦${thisMonthRevenue.toLocaleString()}` },
+                { label: "All time", value: `₦${totalRevenue.toLocaleString()}` },
+                { label: "Bookings this month", value: thisMonthBookings.length },
+                { label: "Repeat clients", value: repeatCustomerPct != null ? `${repeatCustomerPct}%` : "—" },
+              ].map(s => (
+                <div key={s.label} style={{ background: DARK3, borderRadius: 12, padding: "12px 14px", border: `1px solid ${BORDER}` }}>
+                  <div style={{ fontWeight: 800, fontSize: 17, color: GOLD }}>{s.value}</div>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {pendingCount > 0 && (
+              <div style={{ background: `${GOLD}0d`, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: "9px 12px", fontSize: 12, color: GOLD, marginBottom: 16 }}>
+                ⏳ {pendingCount} booking{pendingCount > 1 ? "s" : ""} awaiting payment confirmation
+              </div>
+            )}
+
+            {/* Monthly goal */}
+            <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${BORDER}` }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 10 }}>🎯 Monthly revenue goal</div>
+              {goalNum > 0 ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 6 }}>
+                    <span>₦{thisMonthRevenue.toLocaleString()} of ₦{goalNum.toLocaleString()}</span>
+                    <span>{goalPct}%</span>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 6, background: BORDER, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${goalPct}%`, background: `linear-gradient(90deg, ${GOLD}, ${GOLD_LIGHT})`, transition: "width 0.3s" }} />
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>Set a monthly goal to track your progress.</div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <input value={goalInput} onChange={e => setGoalInput(e.target.value.replace(/[^0-9]/g, ""))} placeholder="e.g. 200000" inputMode="numeric" style={{ flex: 1, padding: "9px 12px", borderRadius: 8, background: DARK2, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 13 }} />
+                <button onClick={handleSaveGoal} disabled={savingGoal} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "0 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{savingGoal ? "Saving..." : "Set goal"}</button>
+              </div>
+            </div>
+
+            {/* Weekly revenue trend */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 10 }}>Revenue — last 8 weeks</div>
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={weeklyRevenue}>
+                  <defs>
+                    <linearGradient id="proRevGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={GOLD} stopOpacity={0.35} />
+                      <stop offset="95%" stopColor={GOLD} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={`${BORDER}55`} />
+                  <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `₦${(v / 1000).toFixed(0)}k`} width={40} />
+                  <Tooltip contentStyle={{ background: DARK2, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} labelStyle={{ color: TEXT }} formatter={(v) => [`₦${Number(v).toLocaleString()}`, "Revenue"]} />
+                  <Area type="monotone" dataKey="revenue" stroke={GOLD} strokeWidth={2} fill="url(#proRevGrad)" dot={{ fill: GOLD, r: 3 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Top services */}
+            {topServices.length > 0 && (
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 10 }}>Top services</div>
+                {topServices.map(([service, count]) => (
+                  <div key={service} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${BORDER}` }}>
+                    <span style={{ fontSize: 13, color: TEXT }}>{service}</span>
+                    <span style={{ fontSize: 12, color: MUTED }}>{count} booking{count > 1 ? "s" : ""}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )
+      )}
+
+      {dashTab === "profile" && (
+      <>
 
       <div style={{ background: `linear-gradient(135deg, ${GOLD}22, ${DARK3})`, borderRadius: 12, padding: 16, marginBottom: 18, border: `1px solid ${GOLD}33` }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -798,6 +952,8 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
       <GoldBtn onClick={handleSave} style={{ width: "100%", opacity: saving ? 0.6 : 1 }}>
         {saving ? (uploadingVideo ? "Uploading video..." : "Saving...") : saved ? "Saved ✅" : "Save Profile"}
       </GoldBtn>
+      </>
+      )}
     </Modal>
   );
 }
@@ -4152,7 +4308,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
 
       {showPortUpload && <PortfolioUploadModal user={user} onClose={() => setShowPortUpload(false)} />}
       {showCreatePost && <CreatePostModal user={user} onClose={() => setShowCreatePost(false)} onPosted={() => { setShowCreatePost(false); setActiveTab("posts"); }} />}
-      {showDash && <ProDashboard user={user} onClose={() => setShowDash(false)} onOpenSubscription={() => { setShowDash(false); setShowSub(true); }} />}
+      {showDash && <ProDashboard user={user} onClose={() => setShowDash(false)} onOpenSubscription={() => { setShowDash(false); setShowSub(true); }} repeatCustomerPct={repeatCustomerPct} />}
       {showSub && <SubscriptionModal user={user} onClose={() => setShowSub(false)} />}
       {showEdit && (
         <EditProfileModal
