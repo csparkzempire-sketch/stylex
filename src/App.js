@@ -602,6 +602,8 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const [monthlyGoal, setMonthlyGoal] = useState("");
   const [goalInput, setGoalInput] = useState("");
   const [savingGoal, setSavingGoal] = useState(false);
+  const [competitorStats, setCompetitorStats] = useState(null); // { avg, min, max, count } shop_price in same category
+  const [prefillBizMessage, setPrefillBizMessage] = useState(null);
 
   const [bizMessages, setBizMessages] = useState([
     { role: "assistant", text: "Hi! I'm your business assistant — ask me about your revenue, pricing, top services, or how to get more repeat clients." }
@@ -672,6 +674,32 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   useEffect(() => {
     if (dashTab === "assistant" && bizBottomRef.current) bizBottomRef.current.scrollIntoView({ behavior: "smooth" });
   }, [bizMessages, dashTab]);
+
+  // Competitor pricing — other pros in the same category, for the pricing card.
+  useEffect(() => {
+    if (!category) { setCompetitorStats(null); return; }
+    supabase.from("profiles").select("shop_price").eq("user_type", "professional").eq("category", category).gt("shop_price", 0)
+      .then(({ data }) => {
+        const prices = (data || []).map(p => p.shop_price).filter(Boolean);
+        if (prices.length < 2) { setCompetitorStats(null); return; } // not enough data to compare meaningfully
+        setCompetitorStats({
+          avg: Math.round(prices.reduce((s, p) => s + p, 0) / prices.length),
+          min: Math.min(...prices),
+          max: Math.max(...prices),
+          count: prices.length,
+        });
+      });
+  }, [category]);
+
+  // Sends a pre-filled question straight to the AI Assistant tab (used by the
+  // "Ask AI for a pricing strategy" button on the pricing card).
+  useEffect(() => {
+    if (prefillBizMessage) {
+      setBizInput(prefillBizMessage);
+      setDashTab("assistant");
+      setPrefillBizMessage(null);
+    }
+  }, [prefillBizMessage]);
 
   const handleSaveGoal = async () => {
     setSavingGoal(true);
@@ -775,12 +803,15 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
       category, servicesOffered: services,
       shopPrice: parseInt(shopPrice) || 0, mobilePrice: parseInt(mobilePrice) || 0,
       yearsExperience: yearsExperience || null, isVerified, isBoosted,
-      currency: "NGN",
+      currency: "NGN", currentMonth: now.toLocaleString("en", { month: "long" }),
       revenueAllTime: totalRevenue, revenueThisMonth: thisMonthRevenue,
       bookingsAllTime: confirmedBookings.length, bookingsThisMonth: thisMonthBookings.length,
       pendingBookings: pendingCount, repeatCustomerPct,
       topServices: topServices.map(([service, count]) => ({ service, bookings: count })),
       monthlyRevenueGoal: goalNum || null, goalProgressPct: goalPct,
+      last8WeeksRevenue: weeklyRevenue.map(w => w.revenue), // demand trend
+      isAvailable, // availability signal
+      competitorPricingInCategory: competitorStats, // { avg, min, max, count } shop_price for other pros in the same category
     };
     try {
       const res = await fetch("/api/business-assistant", {
@@ -849,6 +880,28 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
                 ⏳ {pendingCount} booking{pendingCount > 1 ? "s" : ""} awaiting payment confirmation
               </div>
             )}
+
+            {/* Smart pricing insight */}
+            {competitorStats && parseInt(shopPrice) > 0 && (() => {
+              const myPrice = parseInt(shopPrice);
+              const delta = Math.round(((myPrice - competitorStats.avg) / competitorStats.avg) * 100);
+              const verdict = delta <= -15
+                ? { text: `You're pricing ${Math.abs(delta)}% below the ${category} average — there may be room to raise it.`, color: GOLD }
+                : delta >= 15
+                ? { text: `You're pricing ${delta}% above the ${category} average — make sure your portfolio and reviews back that up.`, color: GOLD }
+                : { text: "Your pricing is in line with the market.", color: GREEN };
+              return (
+                <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${BORDER}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: TEXT, marginBottom: 10 }}>💰 Smart pricing</div>
+                  <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
+                    <div><div style={{ fontSize: 15, fontWeight: 800, color: GOLD }}>₦{myPrice.toLocaleString()}</div><div style={{ fontSize: 10, color: MUTED }}>Your price</div></div>
+                    <div><div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>₦{competitorStats.avg.toLocaleString()}</div><div style={{ fontSize: 10, color: MUTED }}>{category} average ({competitorStats.count} pros)</div></div>
+                  </div>
+                  <div style={{ fontSize: 12, color: verdict.color, marginBottom: 12, lineHeight: 1.5 }}>{verdict.text}</div>
+                  <button onClick={() => setPrefillBizMessage("What should I charge for my services, and why?")} style={{ background: "transparent", border: `1px solid ${GOLD}55`, borderRadius: 20, color: GOLD, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Ask AI for a pricing strategy →</button>
+                </div>
+              );
+            })()}
 
             {/* Monthly goal */}
             <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${BORDER}` }}>
