@@ -1109,6 +1109,23 @@ function BookingModal({ pro, onClose, user }) {
   const commission = Math.round(servicePrice * COMMISSION_RATE);
   const totalPrice = servicePrice + commission;
 
+  // date/time are stored as display strings (no year in `date`) — this
+  // builds a real timestamp from the actual Date object + selected slot,
+  // for reminder notifications that need to know exactly when to fire.
+  const buildAppointmentAt = () => {
+    const day = days[selectedDate];
+    const m = /^(\d+):(\d+)\s*(AM|PM)$/i.exec(selectedTime || "");
+    if (!day || !m) return null;
+    let h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    const ampm = m[3].toUpperCase();
+    if (ampm === "PM" && h !== 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    const dt = new Date(day);
+    dt.setHours(h, min, 0, 0);
+    return dt;
+  };
+
   const handleConfirmBooking = async () => {
     if (!user) { alert("Please sign in to book."); return; }
     setPaying(true);
@@ -1117,6 +1134,7 @@ function BookingModal({ pro, onClose, user }) {
 
     // Save booking with pending payment status
     const proId = typeof pro.id === "string" && pro.id.startsWith("db-") ? pro.id.replace("db-", "") : pro.id;
+    const appointmentAt = buildAppointmentAt();
     const { data: inserted } = await supabase.from("bookings").insert({
       client_id: user.id,
       pro_id: proId,
@@ -1124,6 +1142,7 @@ function BookingModal({ pro, onClose, user }) {
       service_type: serviceType,
       date: days[selectedDate]?.toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" }),
       time: selectedTime,
+      appointment_at: appointmentAt ? appointmentAt.toISOString() : null,
       price: totalPrice,
       status: "pending",
       payment_status: "pending",
