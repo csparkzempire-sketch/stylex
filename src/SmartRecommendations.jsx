@@ -39,7 +39,7 @@ const normCountry = (c) => (c || "").trim().toUpperCase();
 async function loadCandidatePros(clientCountry) {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, full_name, username, category, location, country, bio, shop_price, mobile_price, services, avatar_url, is_verified, is_available")
+    .select("id, full_name, username, category, location, country, bio, shop_price, mobile_price, services, avatar_url, is_verified, is_available, years_experience, languages, certifications, intro_video_url")
     .eq("user_type", "professional")
     .order("is_verified", { ascending: false })
     .limit(CANDIDATE_POOL_SIZE);
@@ -59,7 +59,32 @@ async function loadCandidatePros(clientCountry) {
     if (narrowed.length > 0) pros = narrowed;
   }
 
-  return pros.slice(0, MAX_CANDIDATES).map((p) => ({
+  const shortlisted = pros.slice(0, MAX_CANDIDATES);
+
+  // One batched query for repeat-customer % — same pattern as the Explore
+  // screen's loadPros, avoids an N+1 query per card.
+  const proIds = shortlisted.map((p) => p.id);
+  let repeatByPro = {};
+  if (proIds.length > 0) {
+    const { data: bookingRows } = await supabase
+      .from("bookings").select("pro_id, client_id").eq("status", "confirmed").in("pro_id", proIds);
+    if (bookingRows) {
+      const clientsByPro = {};
+      for (const b of bookingRows) {
+        if (!b.pro_id || !b.client_id) continue;
+        (clientsByPro[b.pro_id] ||= []).push(b.client_id);
+      }
+      for (const [proId, clientIds] of Object.entries(clientsByPro)) {
+        const counts = {};
+        for (const cid of clientIds) counts[cid] = (counts[cid] || 0) + 1;
+        const uniqueClients = Object.keys(counts).length;
+        const repeatClients = Object.values(counts).filter((c) => c > 1).length;
+        repeatByPro[proId] = uniqueClients > 0 ? Math.round((repeatClients / uniqueClients) * 100) : 0;
+      }
+    }
+  }
+
+  return shortlisted.map((p) => ({
     id: p.id,
     name: p.full_name || p.username || "Pro",
     specialties: p.services || p.category || null,
@@ -70,6 +95,11 @@ async function loadCandidatePros(clientCountry) {
     bio: p.bio || null,
     verified: p.is_verified === true,
     avatar_url: p.avatar_url || null,
+    years_experience: p.years_experience || null,
+    languages: p.languages ? p.languages.split(",").map((s) => s.trim()).filter(Boolean) : [],
+    certifications: p.certifications ? p.certifications.split(",").map((s) => s.trim()).filter(Boolean) : [],
+    intro_video_url: p.intro_video_url || null,
+    repeat_customer_pct: repeatByPro[p.id] ?? null,
   }));
 }
 
@@ -102,6 +132,8 @@ const sans = "'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
    match the Beauty Passport screen it sits next to. */
 function ProCard({ pro, reason, rank }) {
   const initials = (pro.name || "P").slice(0, 2).toUpperCase();
+  const [showVideo, setShowVideo] = useState(false);
+  const hasStats = pro.years_experience || (pro.repeat_customer_pct != null);
   return (
     <div style={{ display: "flex", gap: 14, padding: 16, borderRadius: 14,
       border: `1px solid ${C.lineSoft}`, background: C.panel, marginBottom: 14 }}>
@@ -113,16 +145,43 @@ function ProCard({ pro, reason, rank }) {
         ) : initials}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
           <span style={{ fontSize: 11, color: C.muted, fontFamily: sans }}>#{rank}</span>
           <span style={{ fontFamily: serif, fontSize: 17, color: C.text }}>{pro.name}</span>
           {pro.verified && <span title="Verified" style={{ color: C.gold, fontSize: 13 }}>✔</span>}
+          {pro.intro_video_url && (
+            <button onClick={() => setShowVideo((v) => !v)} style={{ background: "rgba(201,162,75,0.08)", border: `1px solid ${C.line}`, borderRadius: 20, padding: "1px 7px", fontSize: 10, color: C.gold, cursor: "pointer" }}>▶ Intro</button>
+          )}
         </div>
         {pro.specialties && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>{pro.specialties}</div>}
         <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 12, color: C.muted }}>
           {pro.price_range && <span>{pro.price_range}</span>}
           {pro.location && <span>· {pro.location}</span>}
         </div>
+
+        {showVideo && pro.intro_video_url && (
+          <video src={pro.intro_video_url} controls autoPlay style={{ width: "100%", borderRadius: 8, marginTop: 8, maxHeight: 180, background: "#000" }} />
+        )}
+
+        {hasStats && (
+          <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: C.muted }}>
+            {pro.years_experience ? <span>🎖 {pro.years_experience}+ yrs</span> : null}
+            {pro.repeat_customer_pct != null ? <span>🔁 {pro.repeat_customer_pct}% repeat</span> : null}
+          </div>
+        )}
+
+        {pro.languages && pro.languages.length > 0 && (
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>🗣 {pro.languages.join(", ")}</div>
+        )}
+
+        {pro.certifications && pro.certifications.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+            {pro.certifications.map((c) => (
+              <span key={c} style={{ fontSize: 10, color: C.goldSoft, background: "rgba(201,162,75,0.06)", border: `1px solid ${C.line}`, borderRadius: 4, padding: "2px 8px" }}>🏅 {c}</span>
+            ))}
+          </div>
+        )}
+
         {reason && (
           <div style={{ marginTop: 10, padding: "8px 11px", borderRadius: 8, fontSize: 12.5, lineHeight: 1.5,
             color: C.text, background: "rgba(201,162,75,0.06)", border: `1px solid ${C.line}` }}>

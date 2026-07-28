@@ -34,6 +34,10 @@ export default async function handler(req, res) {
       location: p.location ?? p.city ?? p.country ?? null,
       bio: p.bio ?? p.about ?? null,
       verified: p.verified ?? p.is_verified ?? null,
+      years_experience: p.years_experience ?? null,
+      languages: p.languages ?? null,
+      certifications: p.certifications ?? null,
+      repeat_customer_pct: p.repeat_customer_pct ?? null,
     }));
     const validIds = new Set(slim.map((p) => String(p.id)));
 
@@ -51,7 +55,7 @@ Return ONLY a JSON array, no markdown:
 
 Rules:
 - Use only pro ids from the list above. Never invent a professional.
-- Base the match on real overlap: the pro's specialty vs the client's preferred styles and goals, budget fit, hair/skin suitability, location.
+- Base the match on real overlap: the pro's specialty vs the client's preferred styles and goals, budget fit, hair/skin suitability, location. Years of experience, languages, certifications and repeat-customer rate are secondary signals — use them to break ties or add trust, not as the main basis for a match.
 - Weak match = low score. Don't force a good reason where there isn't one.
 - Reasons must be specific and warm, not generic filler. No medical claims.`;
 

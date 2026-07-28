@@ -603,6 +603,12 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
   const [isAvailable, setIsAvailable] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
   const [isBoosted, setIsBoosted] = useState(false);
+  const [yearsExperience, setYearsExperience] = useState("");
+  const [languages, setLanguages] = useState("");
+  const [certifications, setCertifications] = useState("");
+  const [introVideoUrl, setIntroVideoUrl] = useState("");
+  const [introVideoFile, setIntroVideoFile] = useState(null);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -625,15 +631,44 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
         setIsAvailable(data.is_available !== false);
         setIsVerified(data.is_verified === true);
         setIsBoosted(data.is_boosted === true);
+        setYearsExperience(data.years_experience ? String(data.years_experience) : "");
+        setLanguages(data.languages || "");
+        setCertifications(data.certifications || "");
+        setIntroVideoUrl(data.intro_video_url || "");
       }
       setLoading(false);
     };
     loadProfile();
   }, [user]);
 
+  const handleVideoChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!f.type.startsWith("video/")) { alert("Please choose a video file."); return; }
+    if (f.size > 30 * 1024 * 1024) { alert("Video is too large. Please use one under 30MB."); return; }
+    setIntroVideoFile(f);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setSaved(false);
+
+    let videoUrl = introVideoUrl;
+    if (introVideoFile) {
+      setUploadingVideo(true);
+      const ext = (introVideoFile.name.split(".").pop() || "mp4").toLowerCase();
+      const path = `${user.id}/intro-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("intro-videos").upload(path, introVideoFile, { cacheControl: "3600", upsert: true });
+      if (!upErr) {
+        videoUrl = supabase.storage.from("intro-videos").getPublicUrl(path).data.publicUrl;
+        setIntroVideoUrl(videoUrl);
+        setIntroVideoFile(null);
+      } else {
+        alert("Video upload failed: " + upErr.message);
+      }
+      setUploadingVideo(false);
+    }
+
     await supabase
       .from("profiles")
       .update({
@@ -647,6 +682,10 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
         offers_shop: offersShop,
         offers_mobile: offersMobile,
         is_available: isAvailable,
+        years_experience: yearsExperience ? parseInt(yearsExperience) : null,
+        languages,
+        certifications,
+        intro_video_url: videoUrl || null,
       })
       .eq("id", user.id);
     setSaving(false);
@@ -708,6 +747,23 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
       <label style={labelStyle}>Services you offer (comma separated)</label>
       <input value={services} onChange={(e) => setServices(e.target.value)} placeholder="e.g. Braids, Weave, Locs" style={inputStyle} />
 
+      <label style={labelStyle}>Years of experience</label>
+      <input value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value.replace(/[^0-9]/g, ""))} placeholder="e.g. 5" inputMode="numeric" style={inputStyle} />
+
+      <label style={labelStyle}>Languages spoken (comma separated)</label>
+      <input value={languages} onChange={(e) => setLanguages(e.target.value)} placeholder="e.g. English, Yoruba, Pidgin" style={inputStyle} />
+
+      <label style={labelStyle}>Certifications (comma separated)</label>
+      <input value={certifications} onChange={(e) => setCertifications(e.target.value)} placeholder="e.g. L'Oréal Certified Colourist" style={inputStyle} />
+
+      <label style={labelStyle}>Intro video <span style={{ color: MUTED, fontWeight: 400 }}>(optional, under 30MB)</span></label>
+      {introVideoUrl && !introVideoFile && (
+        <video src={introVideoUrl} controls style={{ width: "100%", borderRadius: 10, marginBottom: 10, maxHeight: 200, background: "#000" }} />
+      )}
+      <input type="file" accept="video/*" onChange={handleVideoChange} style={{ ...inputStyle, padding: "9px 14px", cursor: "pointer" }} />
+      {introVideoFile && <div style={{ fontSize: 11, color: GREEN, marginTop: -10, marginBottom: 16 }}>✓ {introVideoFile.name} — will upload on save</div>}
+      {uploadingVideo && <div style={{ fontSize: 11, color: GOLD, marginTop: -10, marginBottom: 16 }}>⏳ Uploading video...</div>}
+
       <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${BORDER}` }}>
         <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 14 }}>Pricing</div>
 
@@ -740,7 +796,7 @@ function ProDashboard({ user, onClose, onOpenSubscription }) {
       </div>
 
       <GoldBtn onClick={handleSave} style={{ width: "100%", opacity: saving ? 0.6 : 1 }}>
-        {saving ? "Saving..." : saved ? "Saved ✅" : "Save Profile"}
+        {saving ? (uploadingVideo ? "Uploading video..." : "Saving...") : saved ? "Saved ✅" : "Save Profile"}
       </GoldBtn>
     </Modal>
   );
@@ -773,8 +829,10 @@ function BookingModal({ pro, onClose, user }) {
     setBookingRef(ref);
 
     // Save booking with pending payment status
+    const proId = typeof pro.id === "string" && pro.id.startsWith("db-") ? pro.id.replace("db-", "") : pro.id;
     const { data: inserted } = await supabase.from("bookings").insert({
       client_id: user.id,
+      pro_id: proId,
       service: pro.tags[selectedService],
       service_type: serviceType,
       date: days[selectedDate]?.toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" }),
@@ -2149,7 +2207,10 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
   const boostedPros = sorted.filter(p => p.boosted);
   const regularPros = sorted.filter(p => !p.boosted);
 
-  const ProCard = ({ pro }) => (
+  const ProCard = ({ pro }) => {
+    const [showVideo, setShowVideo] = useState(false);
+    const hasStats = pro.yearsExperience || (pro.repeatCustomerPct != null && pro.bookingCount > 0);
+    return (
     <div key={pro.id} style={{ background: CARD, borderRadius: 18, border: `1px solid ${pro.boosted ? GOLD + "55" : BORDER}`, overflow: "hidden", position: "relative" }}>
       {/* Boosted featured banner */}
       {pro.boosted && (
@@ -2166,6 +2227,9 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
               <span style={{ fontWeight: 800, fontSize: 15, color: TEXT }}>{pro.name}</span>
               <VerifiedBadge verified={pro.verified} size={15} />
+              {pro.introVideoUrl && (
+                <button onClick={() => setShowVideo(v => !v)} title="Intro video" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 20, padding: "1px 7px", fontSize: 10, color: GOLD, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}>▶ Intro</button>
+              )}
             </div>
             <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>{pro.handle}</div>
             <Badge text={pro.category} color={pro.color} />
@@ -2175,10 +2239,34 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
             <div style={{ fontSize: 10, color: MUTED }}>from</div>
           </div>
         </div>
+
+        {showVideo && pro.introVideoUrl && (
+          <video src={pro.introVideoUrl} controls autoPlay style={{ width: "100%", borderRadius: 10, marginBottom: 12, maxHeight: 220, background: "#000" }} />
+        )}
+
         <p style={{ fontSize: 12, color: `${TEXT}99`, margin: "0 0 10px", lineHeight: 1.6 }}>{pro.bio}</p>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+
+        {hasStats && (
+          <div style={{ display: "flex", gap: 14, marginBottom: 10, fontSize: 11, color: MUTED }}>
+            {pro.yearsExperience ? <span>🎖 {pro.yearsExperience}+ yrs experience</span> : null}
+            {pro.repeatCustomerPct != null && pro.bookingCount > 0 ? <span>🔁 {pro.repeatCustomerPct}% repeat clients</span> : null}
+          </div>
+        )}
+
+        {pro.languages && pro.languages.length > 0 && (
+          <div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>🗣 {pro.languages.join(", ")}</div>
+        )}
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
           {pro.tags.map(tag => <span key={tag} style={{ fontSize: 10, color: pro.color, background: `${pro.color}15`, border: `1px solid ${pro.color}33`, borderRadius: 4, padding: "2px 8px" }}>{tag}</span>)}
         </div>
+
+        {pro.certifications && pro.certifications.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            {pro.certifications.map(c => <span key={c} style={{ fontSize: 10, color: GOLD_LIGHT, background: `${GOLD}0d`, border: `1px solid ${GOLD}33`, borderRadius: 4, padding: "2px 8px" }}>🏅 {c}</span>)}
+          </div>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `1px solid ${BORDER}`, paddingTop: 10, marginBottom: 12 }}>
           <div>
             <span style={{ color: GOLD, fontSize: 12 }}>{"★".repeat(Math.round(pro.rating))}</span>
@@ -2195,7 +2283,8 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: DARK, padding: "20px 20px 100px" }}>
@@ -2305,6 +2394,10 @@ function PortfolioUploadModal({ user, onClose }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
+  const [isBeforeAfter, setIsBeforeAfter] = useState(false);
+  const [beforeFile, setBeforeFile] = useState(null);
+  const [beforePreview, setBeforePreview] = useState(null);
+  const beforeInputRef = useRef(null);
 
   useEffect(() => {
     if (!user) return;
@@ -2322,11 +2415,22 @@ function PortfolioUploadModal({ user, onClose }) {
     setPreview(URL.createObjectURL(f));
   };
 
+  const handleBeforeFileChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { setError("Please choose an image file."); return; }
+    if (f.size > 5 * 1024 * 1024) { setError("Image is too large. Please use one under 5MB."); return; }
+    setError("");
+    setBeforeFile(f);
+    setBeforePreview(URL.createObjectURL(f));
+  };
+
   const handleUpload = async () => {
     setError("");
     if (!file) { setError("Please choose a photo first."); return; }
     if (!styleName.trim()) { setError("Please name the style (e.g. Knotless Braids)."); return; }
     if (!category) { setError("Please choose a category."); return; }
+    if (isBeforeAfter && !beforeFile) { setError("Please choose a \"before\" photo too, or turn off before/after."); return; }
 
     setUploading(true);
     try {
@@ -2334,16 +2438,24 @@ function PortfolioUploadModal({ user, onClose }) {
       const filePath = `${user.id}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("portfolio").upload(filePath, file);
       if (upErr) { setError("Upload failed: " + upErr.message); setUploading(false); return; }
+      const imageUrl = supabase.storage.from("portfolio").getPublicUrl(filePath).data.publicUrl;
 
-      const { data: urlData } = supabase.storage.from("portfolio").getPublicUrl(filePath);
-      const imageUrl = urlData.publicUrl;
+      let beforeImageUrl = null;
+      if (isBeforeAfter && beforeFile) {
+        const beforeExt = beforeFile.name.split(".").pop();
+        const beforePath = `${user.id}/${Date.now()}-before.${beforeExt}`;
+        const { error: beforeUpErr } = await supabase.storage.from("portfolio").upload(beforePath, beforeFile);
+        if (beforeUpErr) { setError("\"Before\" photo upload failed: " + beforeUpErr.message); setUploading(false); return; }
+        beforeImageUrl = supabase.storage.from("portfolio").getPublicUrl(beforePath).data.publicUrl;
+      }
 
       const { error: insErr } = await supabase.from("portfolio").insert({
         pro_id: user.id,
         pro_name: user.name,
         category: category,
         style_name: styleName.trim(),
-        image_url: imageUrl
+        image_url: imageUrl,
+        before_image_url: beforeImageUrl,
       });
       if (insErr) { setError("Saved photo but couldn't record it: " + insErr.message); setUploading(false); return; }
 
@@ -2397,6 +2509,28 @@ function PortfolioUploadModal({ user, onClose }) {
       </div>
       {preview && (
         <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ background: "none", border: "none", color: GOLD, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 14 }}>Change photo</button>
+      )}
+
+      <div onClick={() => setIsBeforeAfter(v => !v)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: 16 }}>
+        <span style={{ flexShrink: 0, width: 20, height: 20, borderRadius: 5, border: `1px solid ${isBeforeAfter ? GOLD : MUTED}`, background: isBeforeAfter ? GOLD : "transparent", display: "grid", placeItems: "center", color: DARK, fontSize: 13, fontWeight: 700 }}>{isBeforeAfter ? "✓" : ""}</span>
+        <span style={{ fontSize: 13, color: TEXT }}>This is a before/after transformation</span>
+      </div>
+
+      {isBeforeAfter && (
+        <>
+          <label style={labelStyle}>"Before" photo</label>
+          <input ref={beforeInputRef} type="file" accept="image/*" onChange={handleBeforeFileChange} style={{ display: "none" }} />
+          <div onClick={() => beforeInputRef.current && beforeInputRef.current.click()} style={{ borderRadius: 14, border: `2px dashed ${beforePreview ? GOLD : BORDER}`, background: DARK3, cursor: "pointer", marginBottom: 16, overflow: "hidden", minHeight: 120, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {beforePreview ? (
+              <img src={beforePreview} alt="before preview" style={{ width: "100%", maxHeight: 180, objectFit: "cover", display: "block" }} />
+            ) : (
+              <div style={{ textAlign: "center", padding: "24px 0" }}>
+                <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+                <div style={{ color: TEXT, fontWeight: 600, fontSize: 13 }}>Tap to choose the "before" photo</div>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       <label style={labelStyle}>Style name</label>
@@ -3611,6 +3745,10 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
   const [myName, setMyName] = useState(pro.name || "");
   const [isVerified, setIsVerified] = useState(pro.verified || false);
   const [isBoosted, setIsBoosted] = useState(pro.boosted || false);
+  const [yearsExperience, setYearsExperience] = useState(null);
+  const [proLanguages, setProLanguages] = useState([]);
+  const [proCertifications, setProCertifications] = useState([]);
+  const [repeatCustomerPct, setRepeatCustomerPct] = useState(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [posts, setPosts] = useState([]);
@@ -3621,6 +3759,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
   const [showPortUpload, setShowPortUpload] = useState(false);
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [videoModal, setVideoModal] = useState(null);
+  const [baModal, setBaModal] = useState(null); // before/after portfolio item
   const [loadingTab, setLoadingTab] = useState(false);
 
   const isOwner = user && (pro.id === "db-" + user.id || pro.id === user.id);
@@ -3638,7 +3777,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
         .then(({ data }) => setIsFollowing(!!data));
     }
     // pro's latest badge & avatar info
-    supabase.from("profiles").select("is_verified, is_boosted, avatar_url, username, full_name").eq("id", proDbId).maybeSingle()
+    supabase.from("profiles").select("is_verified, is_boosted, avatar_url, username, full_name, years_experience, languages, certifications").eq("id", proDbId).maybeSingle()
       .then(({ data }) => {
         if (data) {
           setIsVerified(data.is_verified === true);
@@ -3646,7 +3785,20 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
           if (data.avatar_url) setMyAvatar(data.avatar_url);
           if (data.username) setMyUsername(data.username);
           if (data.full_name) setMyName(data.full_name);
+          setYearsExperience(data.years_experience || null);
+          setProLanguages(data.languages ? data.languages.split(",").map(s => s.trim()).filter(Boolean) : []);
+          setProCertifications(data.certifications ? data.certifications.split(",").map(s => s.trim()).filter(Boolean) : []);
         }
+      });
+    // repeat-customer % for this one pro
+    supabase.from("bookings").select("client_id").eq("status", "confirmed").eq("pro_id", proDbId)
+      .then(({ data }) => {
+        if (!data || data.length === 0) { setRepeatCustomerPct(null); return; }
+        const counts = {};
+        for (const b of data) if (b.client_id) counts[b.client_id] = (counts[b.client_id] || 0) + 1;
+        const uniqueClients = Object.keys(counts).length;
+        const repeatClients = Object.values(counts).filter(c => c > 1).length;
+        setRepeatCustomerPct(uniqueClients > 0 ? Math.round((repeatClients / uniqueClients) * 100) : 0);
       });
   }, [proDbId, user]);
 
@@ -3728,8 +3880,10 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
             { label: "Followers", value: formatNum(followerCount) },
             { label: "Rating", value: pro.rating ? `${pro.rating}★` : "—" },
             { label: "Reviews", value: pro.reviews || 0 },
-          ].map((s, i) => (
-            <div key={s.label} style={{ flex: 1, textAlign: "center", padding: "12px 8px", borderRight: i < 2 ? `1px solid ${BORDER}` : "none" }}>
+            ...(yearsExperience ? [{ label: "Experience", value: `${yearsExperience}+ yrs` }] : []),
+            ...(repeatCustomerPct != null ? [{ label: "Repeat clients", value: `${repeatCustomerPct}%` }] : []),
+          ].map((s, i, arr) => (
+            <div key={s.label} style={{ flex: 1, textAlign: "center", padding: "12px 8px", borderRight: i < arr.length - 1 ? `1px solid ${BORDER}` : "none" }}>
               <div style={{ fontWeight: 800, fontSize: 16, color: GOLD }}>{s.value}</div>
               <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{s.label}</div>
             </div>
@@ -3738,6 +3892,18 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
 
         {/* Bio */}
         {pro.bio && <p style={{ fontSize: 13, color: `${TEXT}bb`, lineHeight: 1.6, margin: "0 0 14px" }}>{pro.bio}</p>}
+
+        {/* Languages & certifications */}
+        {proLanguages.length > 0 && (
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>🗣 {proLanguages.join(", ")}</div>
+        )}
+        {proCertifications.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+            {proCertifications.map(c => (
+              <span key={c} style={{ fontSize: 10, color: GOLD_LIGHT, background: `${GOLD}0d`, border: `1px solid ${GOLD}33`, borderRadius: 4, padding: "2px 8px" }}>🏅 {c}</span>
+            ))}
+          </div>
+        )}
 
         {/* Action buttons */}
         {isOwner ? (
@@ -3834,8 +4000,11 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3 }}>
                 {portfolio.map(item => (
-                  <div key={item.id} style={{ aspectRatio: "1", borderRadius: 4, overflow: "hidden", background: DARK3 }}>
+                  <div key={item.id} onClick={() => item.before_image_url && setBaModal(item)} style={{ aspectRatio: "1", borderRadius: 4, overflow: "hidden", background: DARK3, position: "relative", cursor: item.before_image_url ? "pointer" : "default" }}>
                     <img src={item.image_url} alt={item.style_name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    {item.before_image_url && (
+                      <span style={{ position: "absolute", top: 4, left: 4, background: `${GOLD}dd`, color: "#0A0A0B", fontSize: 9, fontWeight: 800, borderRadius: 4, padding: "2px 6px" }}>BEFORE/AFTER</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -3961,6 +4130,23 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
         <div onClick={() => setVideoModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.96)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <video src={videoModal.media_url} controls autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "90vh" }} onClick={e => e.stopPropagation()} />
           <button onClick={() => setVideoModal(null)} style={{ position: "absolute", top: 20, right: 20, background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 8, color: "#fff", padding: "8px 14px", cursor: "pointer", fontSize: 16 }}>✕</button>
+        </div>
+      )}
+
+      {/* Before/after full-screen modal */}
+      {baModal && (
+        <div onClick={() => setBaModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.96)", zIndex: 2000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20, gap: 12 }}>
+          <div style={{ display: "flex", gap: 8, width: "100%", maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+            <div style={{ flex: 1 }}>
+              <img src={baModal.before_image_url} alt="Before" style={{ width: "100%", borderRadius: 8, display: "block" }} />
+              <div style={{ textAlign: "center", color: MUTED, fontSize: 11, marginTop: 6, letterSpacing: 1 }}>BEFORE</div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <img src={baModal.image_url} alt="After" style={{ width: "100%", borderRadius: 8, display: "block" }} />
+              <div style={{ textAlign: "center", color: GOLD, fontSize: 11, marginTop: 6, letterSpacing: 1 }}>AFTER</div>
+            </div>
+          </div>
+          <button onClick={() => setBaModal(null)} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 8, color: "#fff", padding: "8px 14px", cursor: "pointer", fontSize: 16 }}>✕</button>
         </div>
       )}
 
@@ -4134,34 +4320,71 @@ function StylexApp() {
   const loadPros = async () => {
     const { data } = await supabase
       .from("profiles")
-      .select("id, full_name, category, location, bio, shop_price, mobile_price, offers_shop, offers_mobile, is_available, is_verified, is_boosted, phone, services, avatar_url, username, country")
+      .select("id, full_name, category, location, bio, shop_price, mobile_price, offers_shop, offers_mobile, is_available, is_verified, is_boosted, phone, services, avatar_url, username, country, years_experience, languages, certifications, intro_video_url")
       .eq("user_type", "professional");
-    if (data) {
-      setRealPros(data.filter(p => p.full_name && p.category).map(p => ({
-        id: "db-" + p.id,
-        name: p.full_name,
-        handle: p.username ? "@" + p.username : "@" + p.full_name.replace(/\s+/g, "").toLowerCase(),
-        category: p.category || "",
-        location: p.location || "",
-        country: p.country || "",
-        avatar: (p.full_name || "PR").slice(0, 2).toUpperCase(),
-        avatarUrl: p.avatar_url || null,
-        username: p.username || "",
-        rating: 4.8,
-        reviews: 0,
-        followers: "0",
-        shopPrice: p.shop_price || 0,
-        mobilePrice: p.mobile_price || 0,
-        offersShop: p.offers_shop !== false,
-        offersMobile: p.offers_mobile !== false,
-        bio: p.bio || "",
-        tags: p.services ? p.services.split(",").map(s => s.trim()).filter(Boolean) : [p.category],
-        verified: p.is_verified === true,
-        boosted: p.is_boosted === true,
-        available: p.is_available !== false,
-        color: GOLD,
-      })));
+    if (!data) return;
+
+    const pros = data.filter(p => p.full_name && p.category);
+
+    // One batched query for repeat-customer % — computed here rather than
+    // per-card, since a card list can show 20+ pros at once.
+    const proIds = pros.map(p => p.id);
+    let repeatByPro = {};
+    if (proIds.length > 0) {
+      const { data: bookingRows } = await supabase
+        .from("bookings")
+        .select("pro_id, client_id")
+        .eq("status", "confirmed")
+        .in("pro_id", proIds);
+      if (bookingRows) {
+        const clientsByPro = {};
+        for (const b of bookingRows) {
+          if (!b.pro_id || !b.client_id) continue;
+          (clientsByPro[b.pro_id] ||= []).push(b.client_id);
+        }
+        for (const [proId, clientIds] of Object.entries(clientsByPro)) {
+          const counts = {};
+          for (const cid of clientIds) counts[cid] = (counts[cid] || 0) + 1;
+          const uniqueClients = Object.keys(counts).length;
+          const repeatClients = Object.values(counts).filter(c => c > 1).length;
+          repeatByPro[proId] = {
+            bookingCount: clientIds.length,
+            repeatPct: uniqueClients > 0 ? Math.round((repeatClients / uniqueClients) * 100) : 0,
+          };
+        }
+      }
     }
+
+    setRealPros(pros.map(p => ({
+      id: "db-" + p.id,
+      name: p.full_name,
+      handle: p.username ? "@" + p.username : "@" + p.full_name.replace(/\s+/g, "").toLowerCase(),
+      category: p.category || "",
+      location: p.location || "",
+      country: p.country || "",
+      avatar: (p.full_name || "PR").slice(0, 2).toUpperCase(),
+      avatarUrl: p.avatar_url || null,
+      username: p.username || "",
+      rating: 4.8,
+      reviews: 0,
+      followers: "0",
+      shopPrice: p.shop_price || 0,
+      mobilePrice: p.mobile_price || 0,
+      offersShop: p.offers_shop !== false,
+      offersMobile: p.offers_mobile !== false,
+      bio: p.bio || "",
+      tags: p.services ? p.services.split(",").map(s => s.trim()).filter(Boolean) : [p.category],
+      verified: p.is_verified === true,
+      boosted: p.is_boosted === true,
+      available: p.is_available !== false,
+      color: GOLD,
+      yearsExperience: p.years_experience || null,
+      languages: p.languages ? p.languages.split(",").map(s => s.trim()).filter(Boolean) : [],
+      certifications: p.certifications ? p.certifications.split(",").map(s => s.trim()).filter(Boolean) : [],
+      introVideoUrl: p.intro_video_url || null,
+      bookingCount: repeatByPro[p.id]?.bookingCount || 0,
+      repeatCustomerPct: repeatByPro[p.id]?.repeatPct ?? null,
+    })));
   };
 
   // Auth session
