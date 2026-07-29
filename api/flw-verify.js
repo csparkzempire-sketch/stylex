@@ -70,6 +70,21 @@ export default async function handler(req, res) {
             console.error("booking-confirmed push failed:", pushErr);
           }
         }
+
+        // Loyalty points — ref_id + the DB's unique(user_id, reason, ref_id)
+        // constraint make this idempotent if verify ever runs twice.
+        await supabase.from("loyalty_points").insert({ user_id: booking.client_id, points: 20, reason: "booking_confirmed", ref_id: booking.id });
+
+        // Referral bonus — only on the referred client's FIRST confirmed booking,
+        // so a referral can't be farmed by rebooking.
+        const { count: confirmedCount } = await supabase.from("bookings").select("id", { count: "exact", head: true }).eq("client_id", booking.client_id).eq("status", "confirmed");
+        if (confirmedCount === 1) {
+          const { data: client } = await supabase.from("profiles").select("referred_by").eq("id", booking.client_id).maybeSingle();
+          if (client?.referred_by) {
+            await supabase.from("loyalty_points").insert({ user_id: client.referred_by, points: 50, reason: "referral_bonus", ref_id: booking.client_id });
+            await supabase.from("loyalty_points").insert({ user_id: booking.client_id, points: 20, reason: "referral_welcome", ref_id: booking.client_id });
+          }
+        }
       }
     }
 

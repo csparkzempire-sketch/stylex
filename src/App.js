@@ -150,6 +150,57 @@ function VerifiedBadge({ verified, variant = "tick", size = 15 }) {
   );
 }
 
+// ─── LOYALTY CARD (shared: client & pro profiles both earn points) ───
+const LOYALTY_LEVELS = [
+  { name: "Bronze", min: 0, color: "#B08D57" },
+  { name: "Silver", min: 100, color: "#B9BEC7" },
+  { name: "Gold", min: 300, color: GOLD },
+  { name: "Platinum", min: 700, color: "#9FD1E8" },
+  { name: "VIP", min: 1500, color: GOLD_LIGHT },
+];
+
+function LoyaltyCard({ user }) {
+  const [points, setPoints] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("loyalty_points").select("points").eq("user_id", user.id)
+      .then(({ data }) => setPoints((data || []).reduce((s, r) => s + (r.points || 0), 0)));
+  }, [user]);
+
+  if (points === null) return null;
+
+  const levelIdx = [...LOYALTY_LEVELS].reverse().findIndex(l => points >= l.min);
+  const level = LOYALTY_LEVELS[LOYALTY_LEVELS.length - 1 - levelIdx];
+  const nextLevel = LOYALTY_LEVELS[LOYALTY_LEVELS.indexOf(level) + 1];
+  const progressPct = nextLevel ? Math.round(((points - level.min) / (nextLevel.min - level.min)) * 100) : 100;
+  const referralLink = `https://app.stylex.pro/?ref=${user.id}`;
+
+  const copyLink = () => {
+    navigator.clipboard?.writeText(referralLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div style={{ background: `linear-gradient(135deg, ${level.color}1a, ${DARK3})`, border: `1px solid ${level.color}55`, borderRadius: 14, padding: 16, marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15, color: level.color }}>🏆 {level.name}</div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{points.toLocaleString()} points{nextLevel ? ` · ${(nextLevel.min - points).toLocaleString()} to ${nextLevel.name}` : " · Top tier"}</div>
+        </div>
+        <button onClick={copyLink} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 8, color: GOLD, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+          {copied ? "✓ Copied" : "Invite a friend"}
+        </button>
+      </div>
+      <div style={{ height: 6, borderRadius: 3, background: `${BORDER}`, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${progressPct}%`, background: level.color, borderRadius: 3, transition: "width 0.3s" }} />
+      </div>
+    </div>
+  );
+}
+
 // ─── INPUT FIELD ───
 function InputField({ label, type = "text", value, onChange, placeholder, error, icon }) {
   const [showPass, setShowPass] = useState(false);
@@ -294,6 +345,15 @@ function SignUpForm({ onSwitch, onSuccess }) {
         if (error) { setSignupError(error.message); setLoading(false); return; }
 
         if (data.user) {
+          // Validate the referral id rather than trusting the URL param blindly —
+          // an invalid/stale ref would otherwise fail the whole signup via the FK constraint.
+          let referredBy = null;
+          const refParam = new URLSearchParams(window.location.search).get("ref");
+          if (refParam && refParam !== data.user.id) {
+            const { data: referrer } = await supabase.from("profiles").select("id").eq("id", refParam).maybeSingle();
+            if (referrer) referredBy = referrer.id;
+          }
+
           await supabase.from("profiles").insert({
             id: data.user.id,
             email: form.email,
@@ -301,7 +361,8 @@ function SignUpForm({ onSwitch, onSuccess }) {
             user_type: userType,
             phone: form.phone,
             location: form.location,
-            category: form.category
+            category: form.category,
+            referred_by: referredBy,
           });
         }
 
@@ -3937,6 +3998,8 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0, navReques
           ✏️ Edit Profile
         </button>
 
+        <LoyaltyCard user={user} />
+
         {/* Tabs */}
         <div style={{ display: "flex", borderBottom: `1px solid ${BORDER}` }}>
           {tabs.map(t => (
@@ -4164,16 +4227,23 @@ function ReviewsTab({ proDbId, user, proName }) {
     if (!comment.trim()) { setError("Please write something in your review."); return; }
     setSubmitting(true);
     setError("");
-    const { error: insErr } = await supabase.from("reviews").insert({
+    const { data: review, error: insErr } = await supabase.from("reviews").insert({
       pro_id: proDbId,
       pro_name: proName,
       reviewer_id: user.id,
       reviewer_name: user.name,
       rating,
       comment: comment.trim(),
-    });
+    }).select().maybeSingle();
     setSubmitting(false);
     if (insErr) { setError(insErr.message); return; }
+
+    if (review?.id) {
+      // ref_id + the DB's unique(user_id, reason, ref_id) constraint make this
+      // idempotent — safe even if this ever runs twice for the same review.
+      supabase.from("loyalty_points").insert({ user_id: user.id, points: 15, reason: "review_left", ref_id: review.id }).then(() => {});
+    }
+
     setSubmitted(true);
     setComment("");
     setRating(5);
@@ -4463,10 +4533,13 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
 
         {/* Action buttons */}
         {isOwner ? (
-          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-            <button onClick={() => setShowEdit(true)} style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, color: TEXT, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>✏️ Edit Profile</button>
-            <button onClick={() => setShowDash(true)} style={{ flex: 1, background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 10, color: GOLD, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Dashboard</button>
-          </div>
+          <>
+            <LoyaltyCard user={user} />
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              <button onClick={() => setShowEdit(true)} style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, color: TEXT, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>✏️ Edit Profile</button>
+              <button onClick={() => setShowDash(true)} style={{ flex: 1, background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 10, color: GOLD, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Dashboard</button>
+            </div>
+          </>
         ) : (
           <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
             <button onClick={handleFollow} disabled={!isRealPro} title={!isRealPro ? "Demo profile — cannot follow" : ""} style={{ flex: 1, background: !isRealPro ? DARK3 : isFollowing ? DARK3 : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: isFollowing || !isRealPro ? `1px solid ${BORDER}` : "none", borderRadius: 10, color: !isRealPro ? MUTED : isFollowing ? TEXT : "#0A0A0B", padding: "10px", fontSize: 13, fontWeight: 700, cursor: isRealPro ? "pointer" : "not-allowed" }}>
