@@ -288,6 +288,50 @@ function InputField({ label, type = "text", value, onChange, placeholder, error,
   );
 }
 
+// ─── 2FA CHALLENGE (shown at sign-in when the account has 2FA enabled) ───
+function MfaChallengeStep({ onVerified, onCancel }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const verify = async () => {
+    if (!/^\d{6}$/.test(code)) { setError("Enter the 6-digit code from your authenticator app."); return; }
+    setBusy(true);
+    setError("");
+    try {
+      const { data: factors } = await supabase.auth.mfa.listFactors();
+      const factor = factors?.totp?.find(f => f.status === "verified");
+      if (!factor) { setError("No 2FA method found on this account."); setBusy(false); return; }
+      const { data: challenge, error: chErr } = await supabase.auth.mfa.challenge({ factorId: factor.id });
+      if (chErr) { setError(chErr.message); setBusy(false); return; }
+      const { error: verErr } = await supabase.auth.mfa.verify({ factorId: factor.id, challengeId: challenge.id, code });
+      setBusy(false);
+      if (verErr) { setError("Incorrect code. Try again."); return; }
+      onVerified();
+    } catch (err) {
+      setBusy(false);
+      setError("Something went wrong. Please try again.");
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ textAlign: "center", marginBottom: 8 }}>
+        <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 22, margin: "0 0 6px" }}>Two-Factor Verification 🔐</h2>
+        <p style={{ color: MUTED, fontSize: 13, margin: 0 }}>Enter the 6-digit code from your authenticator app</p>
+      </div>
+      {error && (
+        <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: RED }}>⚠️ {error}</div>
+      )}
+      <InputField label="6-DIGIT CODE" value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }} placeholder="123456" />
+      <GoldBtn onClick={verify} disabled={busy} style={{ width: "100%", padding: "13px" }}>
+        {busy ? "Verifying..." : "Verify →"}
+      </GoldBtn>
+      <div style={{ textAlign: "center", fontSize: 12, color: MUTED, cursor: "pointer" }} onClick={onCancel}>Cancel and sign out</div>
+    </div>
+  );
+}
+
 // ─── SIGN IN ───
 function SignInForm({ onSwitch, onSuccess }) {
   const [email, setEmail] = useState("");
@@ -295,6 +339,8 @@ function SignInForm({ onSwitch, onSuccess }) {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [generalError, setGeneralError] = useState("");
+  const [needsMfa, setNeedsMfa] = useState(false);
+  const [pendingUser, setPendingUser] = useState(null);
 
   const handleLogin = async () => {
     const e = {};
@@ -316,17 +362,38 @@ function SignInForm({ onSwitch, onSuccess }) {
       }
 
       const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
-      onSuccess({
+      const userData = {
         id: data.user.id,
         email: data.user.email,
         name: profile?.full_name || email.split("@")[0],
         type: profile?.user_type || "client"
-      });
+      };
+
+      // If the account has 2FA enabled, the session is only at aal1 until
+      // the code is verified — don't grant access yet.
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal && aal.nextLevel === "aal2" && aal.nextLevel !== aal.currentLevel) {
+        setPendingUser(userData);
+        setNeedsMfa(true);
+        setLoading(false);
+        return;
+      }
+
+      onSuccess(userData);
     } catch (err) {
       setGeneralError("Something went wrong. Please try again.");
     }
     setLoading(false);
   };
+
+  if (needsMfa) {
+    return (
+      <MfaChallengeStep
+        onVerified={() => onSuccess(pendingUser)}
+        onCancel={async () => { await supabase.auth.signOut(); setNeedsMfa(false); setPendingUser(null); }}
+      />
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -3600,6 +3667,59 @@ function PrivacySettingsPage({ user, onBack, onDeleteAccount }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
+  const [mfaFactor, setMfaFactor] = useState(null); // the verified TOTP factor, if any
+  const [mfaLoading, setMfaLoading] = useState(true);
+  const [mfaEnroll, setMfaEnroll] = useState(null); // { factorId, qrCode, secret } — mid-enrollment
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaError, setMfaError] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
+
+  const refreshMfaFactor = () => {
+    supabase.auth.mfa.listFactors().then(({ data }) => {
+      setMfaFactor(data?.totp?.find(f => f.status === "verified") || null);
+      setMfaLoading(false);
+    });
+  };
+  useEffect(refreshMfaFactor, []);
+
+  const startMfaEnroll = async () => {
+    setMfaError("");
+    setMfaBusy(true);
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    setMfaBusy(false);
+    if (error) { setMfaError(error.message); return; }
+    setMfaEnroll({ factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret });
+  };
+
+  const confirmMfaEnroll = async () => {
+    if (!/^\d{6}$/.test(mfaCode)) { setMfaError("Enter the 6-digit code from your authenticator app."); return; }
+    setMfaBusy(true);
+    setMfaError("");
+    const { data: challenge, error: chErr } = await supabase.auth.mfa.challenge({ factorId: mfaEnroll.factorId });
+    if (chErr) { setMfaBusy(false); setMfaError(chErr.message); return; }
+    const { error: verErr } = await supabase.auth.mfa.verify({ factorId: mfaEnroll.factorId, challengeId: challenge.id, code: mfaCode });
+    setMfaBusy(false);
+    if (verErr) { setMfaError("Incorrect code. Try again."); return; }
+    setMfaEnroll(null);
+    setMfaCode("");
+    refreshMfaFactor();
+  };
+
+  const cancelMfaEnroll = async () => {
+    if (mfaEnroll) await supabase.auth.mfa.unenroll({ factorId: mfaEnroll.factorId }).catch(() => {});
+    setMfaEnroll(null);
+    setMfaCode("");
+    setMfaError("");
+  };
+
+  const disableMfa = async () => {
+    if (!mfaFactor) return;
+    setMfaBusy(true);
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactor.id });
+    setMfaBusy(false);
+    if (!error) setMfaFactor(null);
+  };
+
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("is_public").eq("id", user.id).maybeSingle()
@@ -3650,10 +3770,49 @@ function PrivacySettingsPage({ user, onBack, onDeleteAccount }) {
 
   const menuItems = [
     { icon: "🔑", label: "Change Password", sub: "Update your account password", page: "password" },
+    { icon: "🔐", label: "Two-Factor Authentication", sub: mfaLoading ? "..." : mfaFactor ? "Currently: Enabled" : "Currently: Disabled", page: "2fa" },
     { icon: "👁️", label: "Profile Visibility", sub: isPublic ? "Currently: Public" : "Currently: Private", page: "visibility" },
     { icon: "🚫", label: "Blocked Users", sub: "Manage users you've blocked", page: "blocked", action: () => { loadBlocked(); setPrivacyPage("blocked"); } },
     { icon: "🗑️", label: "Delete Account", sub: "Permanently delete your STYLEX account", page: "delete", danger: true },
   ];
+
+  if (privacyPage === "2fa") return (
+    <div>
+      <button onClick={() => { cancelMfaEnroll(); setPrivacyPage(null); }} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 8 }}>🔐 Two-Factor Authentication</h3>
+      <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>Add an extra layer of security — after entering your password, you'll also need a code from an authenticator app (like Google Authenticator or Authy).</p>
+
+      {mfaError && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {mfaError}</div>}
+
+      {mfaLoading ? (
+        <div style={{ textAlign: "center", padding: 30, color: MUTED }}>Loading...</div>
+      ) : mfaEnroll ? (
+        <>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 14, display: "flex", justifyContent: "center" }}
+            dangerouslySetInnerHTML={{ __html: mfaEnroll.qrCode }} />
+          <p style={{ color: MUTED, fontSize: 12, textAlign: "center", marginBottom: 4 }}>Scan this with your authenticator app, or enter the code manually:</p>
+          <div style={{ textAlign: "center", fontFamily: "monospace", fontSize: 13, color: GOLD, background: DARK3, borderRadius: 8, padding: "8px 12px", marginBottom: 20, wordBreak: "break-all" }}>{mfaEnroll.secret}</div>
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>ENTER THE 6-DIGIT CODE TO CONFIRM</label>
+          <input value={mfaCode} onChange={e => { setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setMfaError(""); }} placeholder="123456" style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={cancelMfaEnroll} style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, color: TEXT, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+            <GoldBtn onClick={confirmMfaEnroll} disabled={mfaBusy} style={{ flex: 1, padding: "13px" }}>{mfaBusy ? "Verifying..." : "Confirm"}</GoldBtn>
+          </div>
+        </>
+      ) : mfaFactor ? (
+        <>
+          <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: GREEN, marginBottom: 20 }}>✅ Two-factor authentication is enabled on your account.</div>
+          <button onClick={disableMfa} disabled={mfaBusy} style={{ width: "100%", background: `${RED}11`, border: `1px solid ${RED}33`, borderRadius: 12, color: RED, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            {mfaBusy ? "Disabling..." : "Disable Two-Factor Authentication"}
+          </button>
+        </>
+      ) : (
+        <GoldBtn onClick={startMfaEnroll} disabled={mfaBusy} style={{ width: "100%", padding: "13px" }}>
+          {mfaBusy ? "Setting up..." : "Enable Two-Factor Authentication"}
+        </GoldBtn>
+      )}
+    </div>
+  );
 
   if (privacyPage === "password") return (
     <div>
@@ -5275,13 +5434,21 @@ function StylexApp() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
-        setUser({
-          id: session.user.id,
-          email: session.user.email,
-          name: profile?.full_name || session.user.email.split("@")[0],
-          type: profile?.user_type || "client"
-        });
+        // A verified 2FA session persists at aal2 across reloads, so this
+        // normally passes through. It only catches an interrupted session
+        // that never completed the 2FA challenge (e.g. tab closed mid-login).
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal && aal.nextLevel === "aal2" && aal.nextLevel !== aal.currentLevel) {
+          await supabase.auth.signOut();
+        } else {
+          const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+          setUser({
+            id: session.user.id,
+            email: session.user.email,
+            name: profile?.full_name || session.user.email.split("@")[0],
+            type: profile?.user_type || "client"
+          });
+        }
       }
       await loadPros();
       setLoading(false);
