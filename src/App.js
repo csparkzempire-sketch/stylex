@@ -201,6 +201,71 @@ function LoyaltyCard({ user }) {
   );
 }
 
+// ─── AI RECEPTIONIST (per-pro chat for prospective clients) ───
+function ReceptionistChat({ proContext, onBook }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState([
+    { role: "assistant", text: `Hi! I'm ${proContext.name}'s AI receptionist. Ask me about pricing, availability, hours, or booking.` }
+  ]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (open && bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [messages, open]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    const next = [...messages, { role: "user", text }];
+    setMessages(next);
+    setInput("");
+    setSending(true);
+    try {
+      const res = await fetch("/api/receptionist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: next.map(m => ({ role: m.role, content: m.text })), proContext }),
+      });
+      const data = await res.json();
+      setMessages(m => [...m, { role: "assistant", text: data.reply || "Sorry, I couldn't get a response. Please try again.", action: data.action || null }]);
+    } catch {
+      setMessages(m => [...m, { role: "assistant", text: "Something went wrong. Please try again." }]);
+    }
+    setSending(false);
+  };
+
+  return (
+    <div style={{ marginBottom: 16, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width: "100%", background: `${GOLD}0d`, border: "none", padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: GOLD }}>💬 Ask {proContext.name.split(" ")[0]}'s AI Receptionist</span>
+        <span style={{ color: MUTED, fontSize: 12 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div style={{ padding: 12, background: DARK3 }}>
+          <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+            {messages.map((m, i) => (
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
+                <div style={{ maxWidth: "85%", background: m.role === "user" ? `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})` : DARK2, color: m.role === "user" ? "#0A0A0B" : TEXT, borderRadius: 12, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.5 }}>{m.text}</div>
+                {m.action?.type === "book" && (
+                  <button onClick={() => { setOpen(false); onBook(); }} style={{ marginTop: 6, background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 20, padding: "6px 12px", color: GOLD, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Book now →</button>
+                )}
+              </div>
+            ))}
+            {sending && <div style={{ color: MUTED, fontSize: 12 }}>Typing...</div>}
+            <div ref={bottomRef} />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Ask a question..." style={{ flex: 1, background: DARK2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "8px 10px", color: TEXT, fontSize: 12.5, outline: "none" }} />
+            <button onClick={send} disabled={sending} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 8, width: 34, height: 34, cursor: sending ? "wait" : "pointer", fontSize: 14, flexShrink: 0 }}>→</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── INPUT FIELD ───
 function InputField({ label, type = "text", value, onChange, placeholder, error, icon }) {
   const [showPass, setShowPass] = useState(false);
@@ -691,6 +756,8 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const [languages, setLanguages] = useState("");
   const [certifications, setCertifications] = useState("");
   const [avgSessionMinutes, setAvgSessionMinutes] = useState("");
+  const [businessHours, setBusinessHours] = useState("");
+  const [faq, setFaq] = useState("");
   const [introVideoUrl, setIntroVideoUrl] = useState("");
   const [introVideoFile, setIntroVideoFile] = useState(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
@@ -721,6 +788,8 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         setLanguages(data.languages || "");
         setCertifications(data.certifications || "");
         setAvgSessionMinutes(data.avg_session_minutes ? String(data.avg_session_minutes) : "");
+        setBusinessHours(data.business_hours || "");
+        setFaq(data.faq || "");
         setIntroVideoUrl(data.intro_video_url || "");
         setMonthlyGoal(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
         setGoalInput(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
@@ -836,6 +905,8 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         languages,
         certifications,
         avg_session_minutes: avgSessionMinutes ? parseInt(avgSessionMinutes) : null,
+        business_hours: businessHours,
+        faq,
         intro_video_url: videoUrl || null,
       })
       .eq("id", user.id);
@@ -1122,6 +1193,12 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
 
       <label style={labelStyle}>Languages spoken (comma separated)</label>
       <input value={languages} onChange={(e) => setLanguages(e.target.value)} placeholder="e.g. English, Yoruba, Pidgin" style={inputStyle} />
+
+      <label style={labelStyle}>Business hours <span style={{ color: MUTED, fontWeight: 400 }}>(shown to your AI Receptionist)</span></label>
+      <input value={businessHours} onChange={(e) => setBusinessHours(e.target.value)} placeholder="e.g. Mon-Sat 9am-6pm, closed Sundays" style={inputStyle} />
+
+      <label style={labelStyle}>FAQ & policies <span style={{ color: MUTED, fontWeight: 400 }}>(deposits, cancellations, walk-ins, etc.)</span></label>
+      <textarea value={faq} onChange={(e) => setFaq(e.target.value)} placeholder="e.g. 50% deposit required. 24hr cancellation notice. No walk-ins on Saturdays." rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
 
       <label style={labelStyle}>Certifications (comma separated)</label>
       <input value={certifications} onChange={(e) => setCertifications(e.target.value)} placeholder="e.g. L'Oréal Certified Colourist" style={inputStyle} />
@@ -4409,6 +4486,8 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
   const [proLanguages, setProLanguages] = useState([]);
   const [proCertifications, setProCertifications] = useState([]);
   const [avgSessionMinutes, setAvgSessionMinutes] = useState(null);
+  const [businessHours, setBusinessHours] = useState(null);
+  const [faq, setFaq] = useState(null);
   const [repeatCustomerPct, setRepeatCustomerPct] = useState(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -4438,7 +4517,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
         .then(({ data }) => setIsFollowing(!!data));
     }
     // pro's latest badge & avatar info
-    supabase.from("profiles").select("is_verified, is_boosted, avatar_url, username, full_name, years_experience, languages, certifications, avg_session_minutes").eq("id", proDbId).maybeSingle()
+    supabase.from("profiles").select("is_verified, is_boosted, avatar_url, username, full_name, years_experience, languages, certifications, avg_session_minutes, business_hours, faq").eq("id", proDbId).maybeSingle()
       .then(({ data }) => {
         if (data) {
           setIsVerified(data.is_verified === true);
@@ -4450,6 +4529,8 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
           setProLanguages(data.languages ? data.languages.split(",").map(s => s.trim()).filter(Boolean) : []);
           setProCertifications(data.certifications ? data.certifications.split(",").map(s => s.trim()).filter(Boolean) : []);
           setAvgSessionMinutes(data.avg_session_minutes || null);
+          setBusinessHours(data.business_hours || null);
+          setFaq(data.faq || null);
         }
       });
     // repeat-customer % for this one pro
@@ -4566,6 +4647,31 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
               <span key={c} style={{ fontSize: 10, color: GOLD_LIGHT, background: `${GOLD}0d`, border: `1px solid ${GOLD}33`, borderRadius: 4, padding: "2px 8px" }}>🏅 {c}</span>
             ))}
           </div>
+        )}
+
+        {/* AI Receptionist — prospective clients only, and only for real pros */}
+        {!isOwner && isRealPro && (
+          <ReceptionistChat
+            proContext={{
+              name: myName || pro.name,
+              category: pro.category,
+              specialties: pro.tags ? pro.tags.join(", ") : null,
+              location: pro.location,
+              bio: pro.bio,
+              shopPrice: pro.shopPrice || null,
+              mobilePrice: pro.mobilePrice || null,
+              offersShop: pro.offersShop,
+              offersMobile: pro.offersMobile,
+              verified: isVerified,
+              yearsExperience,
+              avgSessionMinutes,
+              languages: proLanguages.join(", ") || null,
+              certifications: proCertifications.join(", ") || null,
+              businessHours,
+              faq,
+            }}
+            onBook={() => onBook(pro)}
+          />
         )}
 
         {/* Action buttons */}
