@@ -925,6 +925,11 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pro_id: user.id, title: `${user.name} is now available`, body: "Book them before their slots fill up.", url: "https://app.stylex.pro" }),
       }).catch(() => {});
+      fetch("/api/notify-followers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pro_id: user.id, audience: "waitlist", title: `${user.name} is available again!`, body: "You were on the waitlist — book now before slots fill up.", url: "https://app.stylex.pro" }),
+      }).catch(() => {});
     }
     setWasAvailable(isAvailable);
 
@@ -4561,6 +4566,8 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
   const [businessHours, setBusinessHours] = useState(null);
   const [faq, setFaq] = useState(null);
   const [repeatCustomerPct, setRepeatCustomerPct] = useState(null);
+  const [onWaitlist, setOnWaitlist] = useState(false);
+  const [waitlistBusy, setWaitlistBusy] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [posts, setPosts] = useState([]);
@@ -4615,7 +4622,25 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
         const repeatClients = Object.values(counts).filter(c => c > 1).length;
         setRepeatCustomerPct(uniqueClients > 0 ? Math.round((repeatClients / uniqueClients) * 100) : 0);
       });
+    // am I already on this pro's waitlist?
+    if (user) {
+      supabase.from("waitlist").select("id").eq("client_id", user.id).eq("pro_id", proDbId).maybeSingle()
+        .then(({ data }) => setOnWaitlist(!!data));
+    }
   }, [proDbId, user]);
+
+  const toggleWaitlist = async () => {
+    if (!user) { alert("Please sign in to join the waitlist."); return; }
+    setWaitlistBusy(true);
+    if (onWaitlist) {
+      const { error } = await supabase.from("waitlist").delete().eq("client_id", user.id).eq("pro_id", proDbId);
+      if (!error) setOnWaitlist(false);
+    } else {
+      const { error } = await supabase.from("waitlist").insert({ client_id: user.id, pro_id: proDbId });
+      if (!error) setOnWaitlist(true);
+    }
+    setWaitlistBusy(false);
+  };
 
   useEffect(() => {
     if (!proDbId) return;
@@ -4744,6 +4769,19 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
             }}
             onBook={() => onBook(pro)}
           />
+        )}
+
+        {/* Waitlist — only when this pro is currently marked busy */}
+        {!isOwner && isRealPro && !pro.available && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: `${GOLD}0d`, border: `1px solid ${GOLD}33`, borderRadius: 12, padding: "12px 14px", marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Currently busy</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>Get notified the moment they're available again</div>
+            </div>
+            <button onClick={toggleWaitlist} disabled={waitlistBusy} style={{ background: onWaitlist ? "transparent" : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: onWaitlist ? `1px solid ${GOLD}55` : "none", borderRadius: 8, color: onWaitlist ? GOLD : "#0A0A0B", padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>
+              {onWaitlist ? "✓ On waitlist" : "🔔 Join Waitlist"}
+            </button>
+          </div>
         )}
 
         {/* Action buttons */}
