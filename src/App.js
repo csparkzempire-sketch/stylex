@@ -3934,6 +3934,18 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0, navReques
   // eslint-disable-next-line no-unused-vars
   const [savedPosts, setSavedPosts] = useState([]);
   const [loadingTab, setLoadingTab] = useState(false);
+  const [cancellingId, setCancellingId] = useState(null);
+
+  // Only a still-pending (unpaid) booking can be self-cancelled — once
+  // payment confirms, cancellation goes through the pro/support directly,
+  // so this never has to touch refund logic.
+  const handleCancelBooking = async (bookingId) => {
+    setCancellingId(bookingId);
+    const { error } = await supabase.from("bookings").update({ status: "cancelled" }).eq("id", bookingId).eq("status", "pending");
+    setCancellingId(null);
+    if (error) { alert("Could not cancel: " + error.message); return; }
+    setBookings(bs => bs.map(b => b.id === bookingId ? { ...b, status: "cancelled" } : b));
+  };
 
   // Load profile info
   useEffect(() => {
@@ -4038,17 +4050,25 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0, navReques
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {bookings.map((b, i) => (
+              {bookings.map((b, i) => {
+                const statusColor = b.status === "confirmed" ? GREEN : b.status === "cancelled" ? RED : GOLD;
+                return (
                 <div key={i} style={{ background: CARD, borderRadius: 14, padding: 16, border: `1px solid ${BORDER}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                     <span style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{b.service}</span>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: `${GREEN}22`, color: GREEN, border: `1px solid ${GREEN}44` }}>{(b.status || "confirmed").toUpperCase()}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: `${statusColor}22`, color: statusColor, border: `1px solid ${statusColor}44` }}>{(b.status || "pending").toUpperCase()}</span>
                   </div>
                   <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>📅 {b.date} · 🕐 {b.time}</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: GOLD }}>₦{b.price?.toLocaleString()}</div>
                   <div style={{ fontSize: 10, color: MUTED, marginTop: 4, fontFamily: "monospace" }}>{b.reference}</div>
+                  {b.status === "pending" && (
+                    <button onClick={() => handleCancelBooking(b.id)} disabled={cancellingId === b.id} style={{ marginTop: 10, background: "transparent", border: `1px solid ${RED}44`, borderRadius: 8, color: RED, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      {cancellingId === b.id ? "Cancelling..." : "Cancel booking"}
+                    </button>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )
         )}
