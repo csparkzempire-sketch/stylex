@@ -76,10 +76,10 @@ async function registerPushNotifications(user) {
       userVisibleOnly: true,
       applicationServerKey: process.env.REACT_APP_VAPID_PUBLIC_KEY,
     });
-    await fetch("/api/push-subscribe", {
+    await fetch("/api/push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: user.id, subscription: sub.toJSON() }),
+      body: JSON.stringify({ action: "subscribe", user_id: user.id, subscription: sub.toJSON() }),
     });
     console.log("✅ Push notifications registered");
   } catch (err) {
@@ -1331,10 +1331,11 @@ function BookingModal({ pro, onClose, user }) {
         // Notify the professional about the new booking
         if (pro.id && pro.id.startsWith("db-")) {
           const proId = pro.id.replace("db-", "");
-          fetch("/api/push-send", {
+          fetch("/api/push", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              action: "send",
               user_id: proId,
               title: "📅 New Booking!",
               body: `${user.name} just booked ${pro.tags[selectedService]} with you`,
@@ -1502,10 +1503,10 @@ function StyleImage({ style, scanType }) {
   useEffect(() => {
     let active = true;
     const context = scanType === "hair" ? "hairstyle" : scanType === "nails" ? "nails" : scanType === "face" ? "makeup" : "beauty";
-    fetch("/api/styleimage", {
+    fetch("/api/scan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: style + " " + context })
+      body: JSON.stringify({ mode: "styleimage", query: style + " " + context })
     })
       .then(r => r.json())
       .then(data => {

@@ -5,7 +5,7 @@
 // notifications: "X is now available", "X just posted new work".
 //
 // Env needed: VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
-// (already set — same ones /api/push-send.js uses).
+// (already set — same ones /api/push.js uses).
 // ============================================================
 import webpush from "web-push";
 

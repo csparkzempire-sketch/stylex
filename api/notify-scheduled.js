@@ -10,7 +10,7 @@
 // it fans out pushes to real users, so it must not be publicly callable.
 //
 // Env needed: CRON_SECRET, VAPID_EMAIL, VAPID_PUBLIC_KEY,
-// VAPID_PRIVATE_KEY (VAPID vars already set — same ones push-send.js uses).
+// VAPID_PRIVATE_KEY (VAPID vars already set — same ones push.js uses).
 // ============================================================
 import webpush from "web-push";
 

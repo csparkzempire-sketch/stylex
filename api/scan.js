@@ -5,6 +5,12 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Merged in from the old standalone api/styleimage.js (same request/response
+  // shape, unrelated to the vision-scan logic below) to stay under Vercel
+  // Hobby's 12-function cap.
+  if (req.body && req.body.mode === 'styleimage') return handleStyleImage(req, res);
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'API key not configured in Vercel' });
   }
@@ -171,5 +177,31 @@ Rules:
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+}
+
+// Merged in from the old api/styleimage.js — returns a real photo URL for a
+// style name via the free Unsplash API. Never fails hard; the frontend has a
+// fallback for { url: null }.
+async function handleStyleImage(req, res) {
+  const { query } = req.body || {};
+  if (!query) return res.status(200).json({ url: null });
+
+  if (!process.env.UNSPLASH_ACCESS_KEY) {
+    return res.status(200).json({ url: null });
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape&content_filter=high`,
+      { headers: { Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}` } }
+    );
+    const data = await response.json();
+    if (data && data.results && data.results.length > 0) {
+      return res.status(200).json({ url: data.results[0].urls.small });
+    }
+    return res.status(200).json({ url: null });
+  } catch (error) {
+    return res.status(200).json({ url: null });
   }
 }

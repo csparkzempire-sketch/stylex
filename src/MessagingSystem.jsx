@@ -264,10 +264,11 @@ function ChatScreen({ user, conversation, onBack }) {
     await supabase.from("conversations").update({ last_message: lastMsg, last_message_at: new Date().toISOString(), ...unreadUpdate }).eq("id", conversation.id);
 
     // Send push notification to other person
-    fetch("/api/push-send", {
+    fetch("/api/push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        action: "send",
         user_id: other.id,
         title: `💬 ${user.name}`,
         body: lastMsg,
