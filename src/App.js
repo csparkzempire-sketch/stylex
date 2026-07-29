@@ -4491,31 +4491,21 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0, navReques
               <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Available balance</div>
             </div>
             {[
-              { icon: "➕", label: "Add Debit/Credit Card", sub: "Visa, Mastercard, Verve — pay ₦50 to verify", payOpts: "card" },
-              { icon: "🏦", label: "Add Bank Account", sub: "Link your bank for transfers", payOpts: "banktransfer" },
-              { icon: "📱", label: "Add Mobile Money", sub: "MTN, Airtel, Glo Money", payOpts: "mobilemoney,ussd" },
+              { icon: "➕", label: "Add Debit/Credit Card", sub: "Coming soon" },
+              { icon: "🏦", label: "Add Bank Account", sub: "Coming soon" },
+              { icon: "📱", label: "Add Mobile Money", sub: "Coming soon" },
             ].map(item => (
-              <button key={item.label} onClick={() => {
-                if (!user) { alert("Please sign in first."); return; }
-                openFlutterwaveCheckout({
-                  amount: 50,
-                  email: user.email,
-                  name: user.name,
-                  txRef: "SX-VERIFY-" + Math.random().toString(36).substr(2, 8).toUpperCase(),
-                  meta: { type: "card_verify", user_id: user.id, description: "Card verification" },
-                  onSuccess: () => alert("✅ Payment method added successfully!"),
-                  onClose: () => {},
-                });
-              }} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10 }}>
+              <div key={item.label} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "15px 16px", display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", marginBottom: 10, opacity: 0.6, boxSizing: "border-box" }}>
                 <span style={{ fontSize: 20 }}>{item.icon}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: TEXT }}>{item.label}</div>
                   <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{item.sub}</div>
                 </div>
-                <span style={{ color: MUTED, fontSize: 18 }}>›</span>
-              </button>
+              </div>
             ))}
-            <p style={{ fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 1.6, marginTop: 8 }}>A small ₦50 charge is used to verify your payment method. It will be refunded to your STYLEX wallet.</p>
+            {/* Previously charged a real ₦50 verification fee via Flutterwave with a
+                promised wallet refund that api/flw-verify.js never actually processed
+                (no "card_verify" case existed) — disabled rather than left live. */}
           </div>
         )}
 
