@@ -739,6 +739,13 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const [bizSending, setBizSending] = useState(false);
   const bizBottomRef = useRef(null);
 
+  const [marketingType, setMarketingType] = useState("instagram_caption");
+  const [marketingTopic, setMarketingTopic] = useState("");
+  const [marketingResult, setMarketingResult] = useState("");
+  const [generatingMarketing, setGeneratingMarketing] = useState(false);
+  const [marketingCopied, setMarketingCopied] = useState(false);
+  const [marketingError, setMarketingError] = useState("");
+
   const [category, setCategory] = useState("");
   const [bio, setBio] = useState("");
   const [location, setLocation] = useState("");
@@ -957,6 +964,22 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const goalNum = parseInt(monthlyGoal) || 0;
   const goalPct = goalNum > 0 ? Math.min(100, Math.round((thisMonthRevenue / goalNum) * 100)) : null;
 
+  const buildBusinessContext = () => ({
+    category, servicesOffered: services,
+    shopPrice: parseInt(shopPrice) || 0, mobilePrice: parseInt(mobilePrice) || 0,
+    yearsExperience: yearsExperience || null, isVerified, isBoosted,
+    currency: "NGN", currentMonth: now.toLocaleString("en", { month: "long" }),
+    revenueAllTime: totalRevenue, revenueThisMonth: thisMonthRevenue,
+    bookingsAllTime: confirmedBookings.length, bookingsThisMonth: thisMonthBookings.length,
+    pendingBookings: pendingCount, repeatCustomerPct,
+    topServices: topServices.map(([service, count]) => ({ service, bookings: count })),
+    monthlyRevenueGoal: goalNum || null, goalProgressPct: goalPct,
+    last8WeeksRevenue: weeklyRevenue.map(w => w.revenue), // demand trend
+    isAvailable, // availability signal
+    competitorPricingInCategory: competitorStats, // { avg, min, max, count } shop_price for other pros in the same category
+    trendingInYourCategory: categoryTrends, // top booked services platform-wide in this category, last 30 days
+  });
+
   const sendBizMessage = async () => {
     const text = bizInput.trim();
     if (!text || bizSending) return;
@@ -964,21 +987,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     setBizMessages(next);
     setBizInput("");
     setBizSending(true);
-    const businessContext = {
-      category, servicesOffered: services,
-      shopPrice: parseInt(shopPrice) || 0, mobilePrice: parseInt(mobilePrice) || 0,
-      yearsExperience: yearsExperience || null, isVerified, isBoosted,
-      currency: "NGN", currentMonth: now.toLocaleString("en", { month: "long" }),
-      revenueAllTime: totalRevenue, revenueThisMonth: thisMonthRevenue,
-      bookingsAllTime: confirmedBookings.length, bookingsThisMonth: thisMonthBookings.length,
-      pendingBookings: pendingCount, repeatCustomerPct,
-      topServices: topServices.map(([service, count]) => ({ service, bookings: count })),
-      monthlyRevenueGoal: goalNum || null, goalProgressPct: goalPct,
-      last8WeeksRevenue: weeklyRevenue.map(w => w.revenue), // demand trend
-      isAvailable, // availability signal
-      competitorPricingInCategory: competitorStats, // { avg, min, max, count } shop_price for other pros in the same category
-      trendingInYourCategory: categoryTrends, // top booked services platform-wide in this category, last 30 days
-    };
+    const businessContext = buildBusinessContext();
     try {
       const res = await fetch("/api/business-assistant", {
         method: "POST",
@@ -991,6 +1000,33 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
       setBizMessages(m => [...m, { role: "assistant", text: "Something went wrong. Please try again." }]);
     }
     setBizSending(false);
+  };
+
+  const generateMarketing = async () => {
+    if (!marketingTopic.trim() || generatingMarketing) return;
+    setGeneratingMarketing(true);
+    setMarketingError("");
+    setMarketingResult("");
+    setMarketingCopied(false);
+    try {
+      const res = await fetch("/api/business-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "marketing", contentType: marketingType, topic: marketingTopic.trim(), businessContext: buildBusinessContext() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setMarketingError(data.error || "Couldn't generate that. Try again."); setGeneratingMarketing(false); return; }
+      setMarketingResult(data.content || "");
+    } catch {
+      setMarketingError("Something went wrong. Please try again.");
+    }
+    setGeneratingMarketing(false);
+  };
+
+  const copyMarketingResult = () => {
+    navigator.clipboard?.writeText(marketingResult);
+    setMarketingCopied(true);
+    setTimeout(() => setMarketingCopied(false), 2000);
   };
 
   if (loading) {
@@ -1012,7 +1048,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${BORDER}` }}>
-        {[{ id: "overview", label: "Overview" }, { id: "assistant", label: "AI Assistant" }, { id: "profile", label: "Business Profile" }].map(t => (
+        {[{ id: "overview", label: "Overview" }, { id: "assistant", label: "AI Assistant" }, { id: "marketing", label: "Marketing" }, { id: "profile", label: "Business Profile" }].map(t => (
           <button key={t.id} onClick={() => setDashTab(t.id)} style={{ background: "none", border: "none", borderBottom: dashTab === t.id ? `2px solid ${GOLD}` : "2px solid transparent", padding: "8px 4px", marginBottom: -1, color: dashTab === t.id ? GOLD : MUTED, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t.label}</button>
         ))}
       </div>
@@ -1146,6 +1182,41 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
             <input value={bizInput} onChange={e => setBizInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendBizMessage()} placeholder="Ask about your revenue, pricing, bookings..." style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 12px", color: TEXT, fontSize: 13, outline: "none" }} />
             <button onClick={sendBizMessage} disabled={bizSending} style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, border: "none", borderRadius: 10, width: 38, height: 38, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>→</button>
           </div>
+        </div>
+      )}
+
+      {dashTab === "marketing" && (
+        <div>
+          <label style={labelStyle}>Content type</label>
+          <select value={marketingType} onChange={e => { setMarketingType(e.target.value); setMarketingResult(""); setMarketingError(""); }} style={inputStyle}>
+            <option value="instagram_caption">Instagram caption</option>
+            <option value="tiktok_script">TikTok script</option>
+            <option value="facebook_ad">Facebook ad</option>
+            <option value="email">Email campaign</option>
+            <option value="sms">SMS campaign</option>
+            <option value="whatsapp">WhatsApp broadcast</option>
+            <option value="campaign_idea">Campaign ideas</option>
+          </select>
+
+          <label style={labelStyle}>What's this for?</label>
+          <input value={marketingTopic} onChange={e => setMarketingTopic(e.target.value)} onKeyDown={e => e.key === "Enter" && generateMarketing()} placeholder="e.g. new knotless braids service, 20% off this weekend" style={inputStyle} />
+
+          <GoldBtn onClick={generateMarketing} disabled={generatingMarketing || !marketingTopic.trim()} style={{ width: "100%", marginBottom: 16 }}>
+            {generatingMarketing ? "Generating..." : "Generate ✨"}
+          </GoldBtn>
+
+          {marketingError && (
+            <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {marketingError}</div>
+          )}
+
+          {marketingResult && (
+            <div style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 14 }}>
+              <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: TEXT, lineHeight: 1.6, marginBottom: 12 }}>{marketingResult}</div>
+              <button onClick={copyMarketingResult} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 8, color: GOLD, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                {marketingCopied ? "✓ Copied" : "Copy to clipboard"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
