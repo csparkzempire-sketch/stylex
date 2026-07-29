@@ -39,7 +39,7 @@ const normCountry = (c) => (c || "").trim().toUpperCase();
 async function loadCandidatePros(clientCountry) {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, full_name, username, category, location, country, bio, shop_price, mobile_price, services, avatar_url, is_verified, is_available, years_experience, languages, certifications, intro_video_url")
+    .select("id, full_name, username, category, location, country, bio, shop_price, mobile_price, services, avatar_url, is_verified, is_available, years_experience, languages, certifications, intro_video_url, avg_session_minutes")
     .eq("user_type", "professional")
     .order("is_verified", { ascending: false })
     .limit(CANDIDATE_POOL_SIZE);
@@ -99,6 +99,7 @@ async function loadCandidatePros(clientCountry) {
     languages: p.languages ? p.languages.split(",").map((s) => s.trim()).filter(Boolean) : [],
     certifications: p.certifications ? p.certifications.split(",").map((s) => s.trim()).filter(Boolean) : [],
     intro_video_url: p.intro_video_url || null,
+    avg_session_minutes: p.avg_session_minutes || null,
     repeat_customer_pct: repeatByPro[p.id] ?? null,
   }));
 }
@@ -133,7 +134,7 @@ const sans = "'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
 function ProCard({ pro, reason, rank }) {
   const initials = (pro.name || "P").slice(0, 2).toUpperCase();
   const [showVideo, setShowVideo] = useState(false);
-  const hasStats = pro.years_experience || (pro.repeat_customer_pct != null);
+  const hasStats = pro.years_experience || pro.avg_session_minutes || (pro.repeat_customer_pct != null);
   return (
     <div style={{ display: "flex", gap: 14, padding: 16, borderRadius: 14,
       border: `1px solid ${C.lineSoft}`, background: C.panel, marginBottom: 14 }}>
@@ -166,6 +167,7 @@ function ProCard({ pro, reason, rank }) {
         {hasStats && (
           <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: C.muted }}>
             {pro.years_experience ? <span>🎖 {pro.years_experience}+ yrs</span> : null}
+            {pro.avg_session_minutes ? <span>⏱ ~{pro.avg_session_minutes} min</span> : null}
             {pro.repeat_customer_pct != null ? <span>🔁 {pro.repeat_customer_pct}% repeat</span> : null}
           </div>
         )}

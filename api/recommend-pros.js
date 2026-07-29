@@ -38,6 +38,7 @@ export default async function handler(req, res) {
       languages: p.languages ?? null,
       certifications: p.certifications ?? null,
       repeat_customer_pct: p.repeat_customer_pct ?? null,
+      avg_session_minutes: p.avg_session_minutes ?? null,
     }));
     const validIds = new Set(slim.map((p) => String(p.id)));
 

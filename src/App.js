@@ -690,6 +690,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const [yearsExperience, setYearsExperience] = useState("");
   const [languages, setLanguages] = useState("");
   const [certifications, setCertifications] = useState("");
+  const [avgSessionMinutes, setAvgSessionMinutes] = useState("");
   const [introVideoUrl, setIntroVideoUrl] = useState("");
   const [introVideoFile, setIntroVideoFile] = useState(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
@@ -719,6 +720,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         setYearsExperience(data.years_experience ? String(data.years_experience) : "");
         setLanguages(data.languages || "");
         setCertifications(data.certifications || "");
+        setAvgSessionMinutes(data.avg_session_minutes ? String(data.avg_session_minutes) : "");
         setIntroVideoUrl(data.intro_video_url || "");
         setMonthlyGoal(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
         setGoalInput(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
@@ -833,6 +835,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         years_experience: yearsExperience ? parseInt(yearsExperience) : null,
         languages,
         certifications,
+        avg_session_minutes: avgSessionMinutes ? parseInt(avgSessionMinutes) : null,
         intro_video_url: videoUrl || null,
       })
       .eq("id", user.id);
@@ -1114,6 +1117,9 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
       <label style={labelStyle}>Years of experience</label>
       <input value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value.replace(/[^0-9]/g, ""))} placeholder="e.g. 5" inputMode="numeric" style={inputStyle} />
 
+      <label style={labelStyle}>Typical session length (minutes)</label>
+      <input value={avgSessionMinutes} onChange={(e) => setAvgSessionMinutes(e.target.value.replace(/[^0-9]/g, ""))} placeholder="e.g. 90" inputMode="numeric" style={inputStyle} />
+
       <label style={labelStyle}>Languages spoken (comma separated)</label>
       <input value={languages} onChange={(e) => setLanguages(e.target.value)} placeholder="e.g. English, Yoruba, Pidgin" style={inputStyle} />
 
@@ -1367,6 +1373,12 @@ function BookingModal({ pro, onClose, user }) {
               <span style={{ fontSize: 13, color: MUTED }}>Service type</span>
               <span style={{ fontSize: 13, color: TEXT, textTransform: "capitalize" }}>{serviceType === "mobile" ? "Mobile (they come to you)" : "Shop visit"}</span>
             </div>
+            {pro.avgSessionMinutes && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: MUTED }}>Estimated duration</span>
+                <span style={{ fontSize: 13, color: TEXT }}>~{pro.avgSessionMinutes} min</span>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span style={{ fontSize: 13, color: MUTED }}>Service fee</span>
               <span style={{ fontSize: 13, color: TEXT }}>₦{servicePrice.toLocaleString()}</span>
@@ -1600,6 +1612,7 @@ function AIScannerModal({ onClose, realPros = [], user, onBookPro }) {
         languages: p.languages ? p.languages.join(", ") : null,
         certifications: p.certifications ? p.certifications.join(", ") : null,
         repeat_customer_pct: p.repeatCustomerPct,
+        avg_session_minutes: p.avgSessionMinutes,
       }));
 
       const resp = await fetch("/api/recommend-pros", {
@@ -2808,7 +2821,7 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
 
   const ProCard = ({ pro }) => {
     const [showVideo, setShowVideo] = useState(false);
-    const hasStats = pro.yearsExperience || (pro.repeatCustomerPct != null && pro.bookingCount > 0);
+    const hasStats = pro.yearsExperience || pro.avgSessionMinutes || (pro.repeatCustomerPct != null && pro.bookingCount > 0);
     return (
     <div key={pro.id} style={{ background: CARD, borderRadius: 18, border: `1px solid ${pro.boosted ? GOLD + "55" : BORDER}`, overflow: "hidden", position: "relative" }}>
       {/* Boosted featured banner */}
@@ -2848,6 +2861,7 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
         {hasStats && (
           <div style={{ display: "flex", gap: 14, marginBottom: 10, fontSize: 11, color: MUTED }}>
             {pro.yearsExperience ? <span>🎖 {pro.yearsExperience}+ yrs experience</span> : null}
+            {pro.avgSessionMinutes ? <span>⏱ ~{pro.avgSessionMinutes} min sessions</span> : null}
             {pro.repeatCustomerPct != null && pro.bookingCount > 0 ? <span>🔁 {pro.repeatCustomerPct}% repeat clients</span> : null}
           </div>
         )}
@@ -4374,6 +4388,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
   const [yearsExperience, setYearsExperience] = useState(null);
   const [proLanguages, setProLanguages] = useState([]);
   const [proCertifications, setProCertifications] = useState([]);
+  const [avgSessionMinutes, setAvgSessionMinutes] = useState(null);
   const [repeatCustomerPct, setRepeatCustomerPct] = useState(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -4403,7 +4418,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
         .then(({ data }) => setIsFollowing(!!data));
     }
     // pro's latest badge & avatar info
-    supabase.from("profiles").select("is_verified, is_boosted, avatar_url, username, full_name, years_experience, languages, certifications").eq("id", proDbId).maybeSingle()
+    supabase.from("profiles").select("is_verified, is_boosted, avatar_url, username, full_name, years_experience, languages, certifications, avg_session_minutes").eq("id", proDbId).maybeSingle()
       .then(({ data }) => {
         if (data) {
           setIsVerified(data.is_verified === true);
@@ -4414,6 +4429,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
           setYearsExperience(data.years_experience || null);
           setProLanguages(data.languages ? data.languages.split(",").map(s => s.trim()).filter(Boolean) : []);
           setProCertifications(data.certifications ? data.certifications.split(",").map(s => s.trim()).filter(Boolean) : []);
+          setAvgSessionMinutes(data.avg_session_minutes || null);
         }
       });
     // repeat-customer % for this one pro
@@ -4507,6 +4523,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
             { label: "Rating", value: pro.rating ? `${pro.rating}★` : "—" },
             { label: "Reviews", value: pro.reviews || 0 },
             ...(yearsExperience ? [{ label: "Experience", value: `${yearsExperience}+ yrs` }] : []),
+            ...(avgSessionMinutes ? [{ label: "Session", value: `~${avgSessionMinutes} min` }] : []),
             ...(repeatCustomerPct != null ? [{ label: "Repeat clients", value: `${repeatCustomerPct}%` }] : []),
           ].map((s, i, arr) => (
             <div key={s.label} style={{ flex: 1, textAlign: "center", padding: "12px 8px", borderRight: i < arr.length - 1 ? `1px solid ${BORDER}` : "none" }}>
@@ -4949,7 +4966,7 @@ function StylexApp() {
   const loadPros = async () => {
     const { data } = await supabase
       .from("profiles")
-      .select("id, full_name, category, location, bio, shop_price, mobile_price, offers_shop, offers_mobile, is_available, is_verified, is_boosted, phone, services, avatar_url, username, country, years_experience, languages, certifications, intro_video_url")
+      .select("id, full_name, category, location, bio, shop_price, mobile_price, offers_shop, offers_mobile, is_available, is_verified, is_boosted, phone, services, avatar_url, username, country, years_experience, languages, certifications, intro_video_url, avg_session_minutes")
       .eq("user_type", "professional");
     if (!data) return;
 
@@ -5011,6 +5028,7 @@ function StylexApp() {
       languages: p.languages ? p.languages.split(",").map(s => s.trim()).filter(Boolean) : [],
       certifications: p.certifications ? p.certifications.split(",").map(s => s.trim()).filter(Boolean) : [],
       introVideoUrl: p.intro_video_url || null,
+      avgSessionMinutes: p.avg_session_minutes || null,
       bookingCount: repeatByPro[p.id]?.bookingCount || 0,
       repeatCustomerPct: repeatByPro[p.id]?.repeatPct ?? null,
     })));
