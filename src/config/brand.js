@@ -6,7 +6,5 @@ export const CSPARKZ_BRAND = {
   logoMark: "/branding/c-sparkz-empire-mark.png",
   tagline: "INNOVATE • ELEVATE • EMPIRE",
   poweredBy: "Powered by C-SPARKZ EMPIRE",
-  // Fill in once the C-SPARKZ EMPIRE corporate site exists — leave null until then
-  // so the brand credit doesn't link out to a fabricated/placeholder domain.
-  url: null,
+  url: "https://csparkz-empire.vercel.app",
 };
