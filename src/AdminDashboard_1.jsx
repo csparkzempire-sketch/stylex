@@ -1,6 +1,7 @@
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from "recharts";
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
+import CSparkzEmpireBrand from "./components/CSparkzEmpireBrand";
 
 const supabase = createClient(
   "https://utvrujgqzheifblizarw.supabase.co",
@@ -495,6 +496,9 @@ function SettingsPanel({ stats, follows, comments, showNotif }) {
               <span style={{ fontSize: 13, color: TEXT, fontWeight: 600, fontFamily: s.mono ? "monospace" : "inherit" }}>{s.value}</span>
             </div>
           ))}
+        </div>
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${BORDER}`, display: "flex", justifyContent: "center" }}>
+          <CSparkzEmpireBrand variant="compact" />
         </div>
       </div>
 

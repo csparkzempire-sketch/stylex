@@ -4222,6 +4222,9 @@ function HelpSupportPage({ onBack, user }) {
       <div style={{ marginTop: 20, textAlign: "center" }}>
         <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, color: GOLD, fontFamily: "Georgia, serif" }}>STYLEX</div>
         <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Version 1.0.0 · Global Beauty Marketplace</div>
+        <div style={{ marginTop: 14 }}>
+          <CSparkzEmpireBrand variant="compact" />
+        </div>
       </div>
     </div>
   );
@@ -4467,7 +4470,6 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0, navReques
                 <div style={{ fontSize: 12, color: MUTED }}>Sign out of your account</div>
               </div>
             </button>
-            <CSparkzEmpireBrand variant="compact" />
           </div>
         )}
 
