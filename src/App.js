@@ -5,6 +5,7 @@ import { MessagingScreen, MessageButton } from "./MessagingSystem";
 import PassportPage from "./PassportPage";
 import BeautyPassport from "./BeautyPassport";
 import RecommendationsPage from "./RecommendationsPage";
+import CSparkzEmpireBrand from "./components/CSparkzEmpireBrand";
 
 // ─── SUPABASE ───
 const supabase = createClient(
@@ -4466,6 +4467,7 @@ function ProfileScreen({ user, onLogout, onUserUpdate, refreshKey = 0, navReques
                 <div style={{ fontSize: 12, color: MUTED }}>Sign out of your account</div>
               </div>
             </button>
+            <CSparkzEmpireBrand variant="compact" />
           </div>
         )}
 
