@@ -162,7 +162,7 @@ const LOYALTY_LEVELS = [
 
 function LoyaltyCard({ user }) {
   const [points, setPoints] = useState(null);
-  const [copied, setCopied] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -176,13 +176,6 @@ function LoyaltyCard({ user }) {
   const level = LOYALTY_LEVELS[LOYALTY_LEVELS.length - 1 - levelIdx];
   const nextLevel = LOYALTY_LEVELS[LOYALTY_LEVELS.indexOf(level) + 1];
   const progressPct = nextLevel ? Math.round(((points - level.min) / (nextLevel.min - level.min)) * 100) : 100;
-  const referralLink = `https://app.stylex.pro/?ref=${user.id}`;
-
-  const copyLink = () => {
-    navigator.clipboard?.writeText(referralLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <div style={{ background: `linear-gradient(135deg, ${level.color}1a, ${DARK3})`, border: `1px solid ${level.color}55`, borderRadius: 14, padding: 16, marginBottom: 16 }}>
@@ -191,14 +184,127 @@ function LoyaltyCard({ user }) {
           <div style={{ fontWeight: 800, fontSize: 15, color: level.color }}>🏆 {level.name}</div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{points.toLocaleString()} points{nextLevel ? ` · ${(nextLevel.min - points).toLocaleString()} to ${nextLevel.name}` : " · Top tier"}</div>
         </div>
-        <button onClick={copyLink} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 8, color: GOLD, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
-          {copied ? "✓ Copied" : "Invite a friend"}
+        <button onClick={() => setShowInvite(true)} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 8, color: GOLD, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+          Invite a friend
         </button>
       </div>
       <div style={{ height: 6, borderRadius: 3, background: `${BORDER}`, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${progressPct}%`, background: level.color, borderRadius: 3, transition: "width 0.3s" }} />
       </div>
+      {showInvite && <InviteFriendModal user={user} onClose={() => setShowInvite(false)} />}
     </div>
+  );
+}
+
+// ─── INVITE A FRIEND MODAL ───
+function InviteFriendModal({ user, onClose }) {
+  const [friendEmail, setFriendEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+  const [copyState, setCopyState] = useState("idle"); // "idle" | "copied" | "failed"
+
+  const referralLink = `https://app.stylex.pro/?ref=${user.id}`;
+
+  const copyLink = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(referralLink);
+      } else {
+        // Fallback for browsers/contexts without the Clipboard API
+        const ta = document.createElement("textarea");
+        ta.value = referralLink;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 2000);
+    } catch (e) {
+      setCopyState("failed");
+      setTimeout(() => setCopyState("idle"), 2500);
+    }
+  };
+
+  const shareLink = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Join me on STYLEX", text: "Book trusted beauty pros or list your own services on STYLEX ✨", url: referralLink });
+      } catch (e) {
+        // user cancelled the native share sheet — no-op
+      }
+    } else {
+      copyLink();
+    }
+  };
+
+  const sendInvite = async () => {
+    setError("");
+    if (!friendEmail.trim() || !/\S+@\S+\.\S+/.test(friendEmail)) { setError("Enter a valid email address."); return; }
+    setSending(true);
+    try {
+      const res = await fetch("/api/invite-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inviter_name: user.name,
+          friend_email: friendEmail.trim(),
+          referral_link: referralLink,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to send");
+      setSent(true);
+      setFriendEmail("");
+      setTimeout(() => setSent(false), 2500);
+    } catch (e) {
+      setError("Couldn't send the invite. Please try again.");
+    }
+    setSending(false);
+  };
+
+  const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 12, boxSizing: "border-box" };
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Invite a Friend 💌</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Earn loyalty points when they book</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      <label style={{ fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 }}>Your referral link</label>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <div style={{ flex: 1, padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: MUTED, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{referralLink}</div>
+        <button onClick={copyLink} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 10, color: GOLD, padding: "0 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+          {copyState === "copied" ? "✓ Copied" : copyState === "failed" ? "Copy failed" : "Copy"}
+        </button>
+      </div>
+
+      <GoldBtn onClick={shareLink} style={{ width: "100%", padding: "12px", marginBottom: 20 }}>
+        📤 Share Link
+      </GoldBtn>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+        <div style={{ flex: 1, height: 1, background: BORDER }} />
+        <span style={{ fontSize: 11, color: MUTED }}>OR EMAIL AN INVITE</span>
+        <div style={{ flex: 1, height: 1, background: BORDER }} />
+      </div>
+
+      {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
+      {sent && <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: GREEN, marginBottom: 14 }}>✅ Invite sent!</div>}
+
+      <label style={{ fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 }}>Friend's email</label>
+      <input value={friendEmail} onChange={(e) => setFriendEmail(e.target.value)} placeholder="friend@email.com" style={inputStyle} />
+
+      <GoldBtn onClick={sendInvite} disabled={sending} outline style={{ width: "100%", padding: "13px" }}>
+        {sending ? "Sending..." : "Send Invite 📨"}
+      </GoldBtn>
+    </Modal>
   );
 }
 
@@ -429,6 +535,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [signupError, setSignupError] = useState("");
+  const [newUserId, setNewUserId] = useState(null);
 
   const update = (field, value) => { setForm(f => ({ ...f, [field]: value })); setErrors(e => ({ ...e, [field]: "" })); };
 
@@ -497,6 +604,8 @@ function SignUpForm({ onSwitch, onSuccess }) {
             category: form.category,
             referred_by: referredBy,
           });
+
+          setNewUserId(data.user.id);
         }
 
         setLoading(false);
@@ -621,7 +730,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
             Welcome to STYLEX, <strong style={{ color: TEXT }}>{form.firstName}</strong>!<br />
             Check <strong style={{ color: GOLD }}>{form.email}</strong> to verify your account.
           </p>
-          <GoldBtn onClick={() => onSuccess({ email: form.email, name: form.firstName, type: userType })} style={{ width: "100%", padding: "13px" }}>Go to My Account →</GoldBtn>
+          <GoldBtn onClick={() => onSuccess({ id: newUserId, email: form.email, name: form.firstName, type: userType })} style={{ width: "100%", padding: "13px" }}>Go to My Account →</GoldBtn>
         </div>
       )}
 
@@ -837,6 +946,25 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
   const [introVideoFile, setIntroVideoFile] = useState(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
 
+  // ── Payouts ──
+  const [banks, setBanks] = useState([]);
+  const [loadingBanks, setLoadingBanks] = useState(false);
+  const [bankCode, setBankCode] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [resolvedAccountName, setResolvedAccountName] = useState("");
+  const [savedBankAccountName, setSavedBankAccountName] = useState("");
+  const [resolvingAccount, setResolvingAccount] = useState(false);
+  const [resolveError, setResolveError] = useState("");
+  const [savingBank, setSavingBank] = useState(false);
+  const [bankSaved, setBankSaved] = useState(false);
+  const [availableBalance, setAvailableBalance] = useState(null);
+  const [loadingBalance, setLoadingBalance] = useState(true);
+  const [payoutHistory, setPayoutHistory] = useState([]);
+  const [requestingPayout, setRequestingPayout] = useState(false);
+  const [payoutError, setPayoutError] = useState("");
+  const [payoutSuccess, setPayoutSuccess] = useState(false);
+  const [payoutsRefresh, setPayoutsRefresh] = useState(0);
+
   useEffect(() => {
     const loadProfile = async () => {
       if (!user) { setLoading(false); return; }
@@ -868,6 +996,10 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         setIntroVideoUrl(data.intro_video_url || "");
         setMonthlyGoal(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
         setGoalInput(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
+        setBankCode(data.bank_code || "");
+        setBankAccountNumber(data.bank_account_number || "");
+        setSavedBankAccountName(data.bank_account_name || "");
+        setResolvedAccountName(data.bank_account_name || "");
       }
       setLoading(false);
     };
@@ -880,6 +1012,24 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     supabase.from("bookings").select("status, price, service, created_at").eq("pro_id", user.id)
       .then(({ data }) => { setBookings(data || []); setLoadingAnalytics(false); });
   }, [user]);
+
+  // Payouts tab — bank list, available balance and payout history load lazily
+  // the first time the pro opens the tab.
+  useEffect(() => {
+    if (dashTab !== "payouts" || !user) return;
+    if (banks.length === 0 && !loadingBanks) {
+      setLoadingBanks(true);
+      fetch("/api/flw-banks").then(r => r.json()).then(d => setBanks(d.banks || [])).catch(() => {}).finally(() => setLoadingBanks(false));
+    }
+    const loadBalance = () => {
+      setLoadingBalance(true);
+      supabase.from("bookings").select("pro_amount").eq("pro_id", user.id).eq("status", "confirmed").eq("payment_status", "paid").is("payout_id", null)
+        .then(({ data }) => { setAvailableBalance((data || []).reduce((s, b) => s + (b.pro_amount || 0), 0)); setLoadingBalance(false); });
+    };
+    loadBalance();
+    supabase.from("payouts").select("id, amount, status, created_at, failure_reason").eq("pro_id", user.id).order("created_at", { ascending: false }).limit(10)
+      .then(({ data }) => setPayoutHistory(data || []));
+  }, [dashTab, user, payoutsRefresh]);
 
   useEffect(() => {
     if (dashTab === "assistant" && bizBottomRef.current) bizBottomRef.current.scrollIntoView({ behavior: "smooth" });
@@ -933,6 +1083,63 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     await supabase.from("profiles").update({ monthly_revenue_goal: goal }).eq("id", user.id);
     setMonthlyGoal(goal ? String(goal) : "");
     setSavingGoal(false);
+  };
+
+  const resolveAccount = async () => {
+    setResolveError("");
+    setResolvedAccountName("");
+    if (!bankCode) { setResolveError("Choose a bank first."); return; }
+    if (!/^\d{10}$/.test(bankAccountNumber)) { setResolveError("Enter a valid 10-digit account number."); return; }
+    setResolvingAccount(true);
+    try {
+      const res = await fetch("/api/flw-resolve-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account_number: bankAccountNumber, bank_code: bankCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not verify this account");
+      setResolvedAccountName(data.account_name);
+    } catch (e) {
+      setResolveError(e.message);
+    }
+    setResolvingAccount(false);
+  };
+
+  const saveBankDetails = async () => {
+    if (!resolvedAccountName) return;
+    setSavingBank(true);
+    const bankName = banks.find(b => b.code === bankCode)?.name || "";
+    await supabase.from("profiles").update({
+      bank_account_number: bankAccountNumber,
+      bank_code: bankCode,
+      bank_name: bankName,
+      bank_account_name: resolvedAccountName,
+    }).eq("id", user.id);
+    setSavedBankAccountName(resolvedAccountName);
+    setSavingBank(false);
+    setBankSaved(true);
+    setTimeout(() => setBankSaved(false), 2500);
+  };
+
+  const requestPayout = async () => {
+    setPayoutError("");
+    setRequestingPayout(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/request-payout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token || ""}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Payout request failed");
+      setPayoutSuccess(true);
+      setPayoutsRefresh(n => n + 1);
+      setTimeout(() => setPayoutSuccess(false), 3000);
+    } catch (e) {
+      setPayoutError(e.message);
+    }
+    setRequestingPayout(false);
   };
 
   const handleVideoChange = (e) => {
@@ -1121,7 +1328,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${BORDER}` }}>
-        {[{ id: "overview", label: "Overview" }, { id: "assistant", label: "AI Assistant" }, { id: "marketing", label: "Marketing" }, { id: "profile", label: "Business Profile" }].map(t => (
+        {[{ id: "overview", label: "Overview" }, { id: "assistant", label: "AI Assistant" }, { id: "marketing", label: "Marketing" }, { id: "profile", label: "Business Profile" }, { id: "payouts", label: "Payouts" }].map(t => (
           <button key={t.id} onClick={() => setDashTab(t.id)} style={{ background: "none", border: "none", borderBottom: dashTab === t.id ? `2px solid ${GOLD}` : "2px solid transparent", padding: "8px 4px", marginBottom: -1, color: dashTab === t.id ? GOLD : MUTED, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t.label}</button>
         ))}
       </div>
@@ -1391,6 +1598,82 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
       </GoldBtn>
       </>
       )}
+
+      {dashTab === "payouts" && (
+        <>
+          <div style={{ background: `linear-gradient(135deg, ${GOLD}22, ${DARK3})`, borderRadius: 12, padding: 18, marginBottom: 18, border: `1px solid ${GOLD}33`, textAlign: "center" }}>
+            <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Available to withdraw</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: GOLD }}>
+              {loadingBalance ? "…" : `₦${(availableBalance || 0).toLocaleString()}`}
+            </div>
+          </div>
+
+          {payoutError && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {payoutError}</div>}
+          {payoutSuccess && <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: GREEN, marginBottom: 14 }}>✅ Payout requested — it's on its way to your bank.</div>}
+
+          {savedBankAccountName ? (
+            <div style={{ background: DARK3, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>PAYOUT ACCOUNT</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{savedBankAccountName}</div>
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{banks.find(b => b.code === bankCode)?.name || ""} · {bankAccountNumber}</div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 14 }}>Add your bank account below to enable withdrawals.</div>
+          )}
+
+          <GoldBtn onClick={requestPayout} disabled={requestingPayout || !savedBankAccountName || !availableBalance} style={{ width: "100%", marginBottom: 24 }}>
+            {requestingPayout ? "Requesting..." : "Withdraw to Bank"}
+          </GoldBtn>
+
+          <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 12 }}>{savedBankAccountName ? "Update bank account" : "Add bank account"}</div>
+
+          <label style={labelStyle}>Bank</label>
+          <select value={bankCode} onChange={(e) => { setBankCode(e.target.value); setResolvedAccountName(""); }} style={inputStyle} disabled={loadingBanks}>
+            <option value="">{loadingBanks ? "Loading banks..." : "Select your bank..."}</option>
+            {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </select>
+
+          <label style={labelStyle}>Account number</label>
+          <input value={bankAccountNumber} onChange={(e) => { setBankAccountNumber(e.target.value.replace(/[^0-9]/g, "").slice(0, 10)); setResolvedAccountName(""); }} placeholder="10-digit account number" inputMode="numeric" style={inputStyle} />
+
+          {resolveError && <div style={{ fontSize: 12, color: RED, marginTop: -10, marginBottom: 14 }}>{resolveError}</div>}
+
+          {resolvedAccountName ? (
+            <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: GREEN, marginBottom: 16 }}>
+              ✓ {resolvedAccountName}
+            </div>
+          ) : (
+            <button onClick={resolveAccount} disabled={resolvingAccount || !bankCode || bankAccountNumber.length !== 10} style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, color: TEXT, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
+              {resolvingAccount ? "Verifying..." : "Verify Account"}
+            </button>
+          )}
+
+          <GoldBtn onClick={saveBankDetails} disabled={!resolvedAccountName || savingBank} style={{ width: "100%" }}>
+            {savingBank ? "Saving..." : bankSaved ? "Saved ✅" : "Save Bank Account"}
+          </GoldBtn>
+
+          {payoutHistory.length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 12 }}>Payout history</div>
+              {payoutHistory.map(p => (
+                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${BORDER}` }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>₦{p.amount.toLocaleString()}</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>{new Date(p.created_at).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })}</div>
+                  </div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+                    color: p.status === "successful" ? GREEN : p.status === "failed" ? RED : GOLD,
+                    background: `${p.status === "successful" ? GREEN : p.status === "failed" ? RED : GOLD}15`,
+                  }}>
+                    {p.status === "successful" ? "Paid" : p.status === "failed" ? "Failed" : "Processing"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </Modal>
   );
 }
@@ -1450,6 +1733,8 @@ function BookingModal({ pro, onClose, user }) {
       time: selectedTime,
       appointment_at: appointmentAt ? appointmentAt.toISOString() : null,
       price: totalPrice,
+      pro_amount: servicePrice,
+      commission_amount: commission,
       status: "pending",
       payment_status: "pending",
       reference: ref,
@@ -2374,6 +2659,80 @@ function CollabModal({ user, onClose }) {
   );
 }
 
+// ─── REPORT AN ISSUE MODAL ───
+// Quick, always-reachable way to flag something broken in the app — separate
+// from the deeper Help & Support flow, which sits behind Profile → Settings.
+function ReportIssueModal({ user, onClose }) {
+  const [message, setMessage] = useState("");
+  const [email, setEmail] = useState(user?.email || "");
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSend = async () => {
+    setError("");
+    if (!message.trim()) { setError("Please describe what went wrong."); return; }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/collab-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: `App issue — ${user?.name || "Anonymous"}`,
+          contact_email: email.trim() || "no-email@stylex.pro",
+          request_type: "bug_report",
+          message: message.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to send");
+      setDone(true);
+      setTimeout(() => { setDone(false); onClose(); }, 2200);
+    } catch (e) {
+      setError("Something went wrong sending your report. Please try again.");
+    }
+    setSaving(false);
+  };
+
+  const labelStyle = { fontSize: 12, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
+  const inputStyle = { width: "100%", padding: "11px 12px", borderRadius: 10, background: DARK3, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, marginBottom: 16, boxSizing: "border-box" };
+
+  if (done) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <div style={{ fontSize: 56, marginBottom: 14 }}>✅</div>
+          <h3 style={{ color: GOLD, fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Thanks for the report!</h3>
+          <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.6 }}>We'll look into it.</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 18, margin: "0 0 3px" }}>Report an Issue 🐞</h3>
+          <span style={{ fontSize: 12, color: MUTED }}>Something not working? Let us know</span>
+        </div>
+        <button onClick={onClose} style={{ background: `${GOLD}11`, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+
+      {error && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {error}</div>}
+
+      <label style={labelStyle}>Your email (optional, for follow-up)</label>
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" style={inputStyle} />
+
+      <label style={labelStyle}>What happened?</label>
+      <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="What were you trying to do? What went wrong?" rows={5} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+      <GoldBtn onClick={handleSend} disabled={saving} style={{ width: "100%", padding: "13px" }}>
+        {saving ? "Sending..." : "Send Report 📨"}
+      </GoldBtn>
+    </Modal>
+  );
+}
+
 // ─── MARKETPLACE SCREEN ───
 function MarketplaceScreen({ user, onLogin }) {
   const [products, setProducts] = useState([]);
@@ -2829,6 +3188,7 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [commentPost, setCommentPost] = useState(null);
+  const [showReportIssue, setShowReportIssue] = useState(false);
 
   const loadPosts = () => {
     setLoadingPosts(true);
@@ -2889,9 +3249,12 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {user && <Avatar initials={user.name.slice(0, 2).toUpperCase()} size={32} color={GOLD} />}
+          <button onClick={() => setShowReportIssue(true)} title="Report an issue" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>🐞</button>
           <button onClick={() => user && registerPushNotifications(user)} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}33`, borderRadius: 8, color: GOLD, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>🔔</button>
         </div>
       </div>
+
+      {showReportIssue && <ReportIssueModal user={user} onClose={() => setShowReportIssue(false)} />}
 
       <div style={{ display: "flex", gap: 8, padding: "14px 20px", overflowX: "auto", scrollbarWidth: "none" }}>
         {categories.map(cat => (
@@ -4707,6 +5070,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
   const [showEdit, setShowEdit] = useState(false);
   const [showDash, setShowDash] = useState(false);
   const [showSub, setShowSub] = useState(false);
+  const [settingsPage, setSettingsPage] = useState(null); // "notifications" | "help"
   const [myAvatar, setMyAvatar] = useState(pro.avatarUrl || "");
   const [myUsername, setMyUsername] = useState(pro.username || "");
   const [myName, setMyName] = useState(pro.name || "");
@@ -5101,7 +5465,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
         )}
 
         {/* Settings (owner only) */}
-        {activeTab === "settings" && (
+        {activeTab === "settings" && !settingsPage && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {isOwner && (
               <>
@@ -5131,7 +5495,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
                 </button>
               </>
             )}
-            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+            <button onClick={() => setSettingsPage("notifications")} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
               <span style={{ fontSize: 22 }}>🔔</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Notifications</div>
@@ -5139,7 +5503,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
               </div>
               <span style={{ color: MUTED, fontSize: 16 }}>›</span>
             </button>
-            <button style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+            <button onClick={() => setSettingsPage("help")} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
               <span style={{ fontSize: 22 }}>❓</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Help & Support</div>
@@ -5157,6 +5521,14 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
               </button>
             )}
           </div>
+        )}
+
+        {activeTab === "settings" && settingsPage === "notifications" && (
+          <NotificationsSettingsPage user={user} onBack={() => setSettingsPage(null)} />
+        )}
+
+        {activeTab === "settings" && settingsPage === "help" && (
+          <HelpSupportPage onBack={() => setSettingsPage(null)} user={user} />
         )}
       </div>
 
