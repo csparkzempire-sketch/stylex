@@ -531,12 +531,13 @@ function SettingsPanel({ stats, follows, comments, showNotif }) {
 function AddProPanel({ showNotif, onCreated }) {
   const CATEGORIES = ["Barber", "Hairstylist", "Makeup Artist", "Nail Technician", "Lash Technician", "Braider", "Loctician", "Skincare / Esthetician", "Spa / Massage", "Other"];
 
-  const blank = { full_name: "", username: "", category: "Barber", location: "", country: "Nigeria", shop_price: "", bio: "", phone: "" };
+  const blank = { full_name: "", username: "", category: "Barber", location: "", country: "Nigeria", shop_price: "", bio: "", phone: "", email: "" };
   const [form, setForm] = useState(blank);
   const [avatarFile, setAvatarFile] = useState(null);
   const [workFiles, setWorkFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState("");
+  const [emailError, setEmailError] = useState("");
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -552,8 +553,10 @@ function AddProPanel({ showNotif, onCreated }) {
   };
 
   const handleCreate = async () => {
+    setEmailError("");
     if (!form.full_name.trim()) { showNotif("Enter the pro's name", "error"); return; }
     if (workFiles.length === 0) { showNotif("Add at least one work photo", "error"); return; }
+    if (form.email.trim() && !/\S+@\S+\.\S+/.test(form.email.trim())) { setEmailError("Enter a valid email, or leave it blank."); return; }
 
     setSaving(true);
     try {
@@ -587,6 +590,7 @@ function AddProPanel({ showNotif, onCreated }) {
         shop_price: form.shop_price ? parseInt(form.shop_price, 10) : null,
         bio: form.bio.trim() || null,
         phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
         avatar_url: avatarUrl,
         is_verified: true,
         is_available: true,
@@ -658,7 +662,14 @@ function AddProPanel({ showNotif, onCreated }) {
           <div><label style={labelStyle}>COUNTRY</label><input style={inputStyle} value={form.country} onChange={e => set("country", e.target.value)} placeholder="Nigeria" /></div>
         </div>
 
-        <div><label style={labelStyle}>PHONE (for your records)</label><input style={inputStyle} value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="080..." /></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div><label style={labelStyle}>PHONE (for your records)</label><input style={inputStyle} value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="080..." /></div>
+          <div>
+            <label style={labelStyle}>EMAIL (for your records)</label>
+            <input style={{ ...inputStyle, borderColor: emailError ? RED : BORDER }} type="email" value={form.email} onChange={e => { set("email", e.target.value); setEmailError(""); }} placeholder="pro@email.com" />
+            {emailError && <div style={{ fontSize: 11, color: RED, marginTop: 5 }}>{emailError}</div>}
+          </div>
+        </div>
 
         <div><label style={labelStyle}>BIO</label><textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical", fontFamily: "inherit" }} value={form.bio} onChange={e => set("bio", e.target.value)} placeholder="Natural hair specialist. Crown jewels only." /></div>
 
