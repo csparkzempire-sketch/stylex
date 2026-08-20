@@ -1029,6 +1029,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     loadBalance();
     supabase.from("payouts").select("id, amount, status, created_at, failure_reason").eq("pro_id", user.id).order("created_at", { ascending: false }).limit(10)
       .then(({ data }) => setPayoutHistory(data || []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashTab, user, payoutsRefresh]);
 
   useEffect(() => {
