@@ -65,6 +65,20 @@ function openFlutterwaveCheckout({ amount, email, name, phone, txRef, meta, onSu
 }
 
 
+// ─── AUTH ERROR MESSAGE HELPER ───
+// supabase-js wraps some GoTrue errors (e.g. any 5xx response) as a generic
+// AuthRetryableFetchError whose .message is the literal string "{}" rather
+// than the actual server message — this rejects that junk instead of ever
+// showing a blank or "{}" error to the user.
+function authErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  const msg = typeof error.message === "string" ? error.message.trim() : "";
+  if (msg && !msg.startsWith("{") && !msg.startsWith("[")) return msg;
+  if (typeof error.error_description === "string" && error.error_description.trim()) return error.error_description;
+  if (typeof error.code === "string" && error.code.trim()) return `${fallback} (${error.code})`;
+  return fallback;
+}
+
 // ─── PUSH NOTIFICATION HELPER ───
 async function registerPushNotifications(user) {
   try {
@@ -528,6 +542,105 @@ function SignInForm({ onSwitch, onSuccess }) {
   );
 }
 
+// ─── SIGN IN WITH PHONE ───
+// Only works for an account that has already verified a phone number from
+// Settings → Privacy & Security — this never creates a new account, so a
+// number with no linked account fails with a clear message rather than
+// silently registering someone.
+function PhoneSignInForm({ onSwitch, onSuccess }) {
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState("phone"); // "phone" | "otp"
+  const [loading, setLoading] = useState(false);
+  const [generalError, setGeneralError] = useState("");
+  const [needsMfa, setNeedsMfa] = useState(false);
+  const [pendingUser, setPendingUser] = useState(null);
+
+  const sendCode = async () => {
+    setGeneralError("");
+    if (!/^\+\d{8,15}$/.test(phone)) { setGeneralError("Enter your number in international format, e.g. +2348012345678"); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: false } });
+    setLoading(false);
+    if (error) { setGeneralError("No account found for this number. Sign in with email and add your phone in Settings first."); return; }
+    setStep("otp");
+  };
+
+  const verifyCode = async () => {
+    setGeneralError("");
+    if (!/^\d{4,8}$/.test(otp)) { setGeneralError("Enter the code we texted you."); return; }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({ phone, token: otp, type: "sms" });
+      if (error) { setGeneralError("Incorrect or expired code. Please try again."); setLoading(false); return; }
+
+      const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
+      const userData = {
+        id: data.user.id,
+        email: data.user.email,
+        name: profile?.full_name || data.user.email?.split("@")[0] || "there",
+        type: profile?.user_type || "client"
+      };
+
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal && aal.nextLevel === "aal2" && aal.nextLevel !== aal.currentLevel) {
+        setPendingUser(userData);
+        setNeedsMfa(true);
+        setLoading(false);
+        return;
+      }
+
+      onSuccess(userData);
+    } catch (err) {
+      setGeneralError("Something went wrong. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  if (needsMfa) {
+    return (
+      <MfaChallengeStep
+        onVerified={() => onSuccess(pendingUser)}
+        onCancel={async () => { await supabase.auth.signOut(); setNeedsMfa(false); setPendingUser(null); }}
+      />
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ textAlign: "center", marginBottom: 8 }}>
+        <h2 style={{ color: TEXT, fontWeight: 800, fontSize: 22, margin: "0 0 6px" }}>Welcome Back 👋</h2>
+        <p style={{ color: MUTED, fontSize: 13, margin: 0 }}>{step === "phone" ? "Sign in with your phone number" : `Enter the code we texted to ${phone}`}</p>
+      </div>
+      {generalError && (
+        <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: RED }}>⚠️ {generalError}</div>
+      )}
+      {step === "phone" ? (
+        <>
+          <InputField label="PHONE NUMBER" type="tel" value={phone} onChange={e => { setPhone(e.target.value); setGeneralError(""); }} placeholder="+2348012345678" icon="📱" />
+          <GoldBtn onClick={sendCode} disabled={loading} style={{ width: "100%", padding: "13px" }}>
+            {loading ? "Sending..." : "Send Code →"}
+          </GoldBtn>
+        </>
+      ) : (
+        <>
+          <InputField label="VERIFICATION CODE" type="text" value={otp} onChange={e => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 8)); setGeneralError(""); }} placeholder="123456" />
+          <GoldBtn onClick={verifyCode} disabled={loading} style={{ width: "100%", padding: "13px" }}>
+            {loading ? "Verifying..." : "Verify & Sign In →"}
+          </GoldBtn>
+          <div style={{ textAlign: "center", fontSize: 12, color: GOLD, cursor: "pointer", fontWeight: 600 }} onClick={() => { setStep("phone"); setOtp(""); setGeneralError(""); }}>
+            ← Use a different number
+          </div>
+        </>
+      )}
+      <div style={{ textAlign: "center", fontSize: 12, color: MUTED }}>
+        Don't have an account?{" "}
+        <span onClick={onSwitch} style={{ color: GOLD, fontWeight: 700, cursor: "pointer" }}>Create Account</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── SIGN UP ───
 function SignUpForm({ onSwitch, onSuccess }) {
   const [step, setStep] = useState(1);
@@ -756,6 +869,7 @@ function SignUpForm({ onSwitch, onSuccess }) {
 // ─── AUTH SCREEN ───
 function AuthScreen({ onAuthenticated }) {
   const [mode, setMode] = useState("signin");
+  const [signinMethod, setSigninMethod] = useState("email"); // "email" | "phone"
   return (
     <div style={{ minHeight: "100vh", background: DARK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Helvetica Neue', Arial, sans-serif", padding: 20 }}>
       <div style={{ background: CARD, borderRadius: 24, padding: "32px 28px", width: "100%", maxWidth: 420, border: `1px solid ${BORDER}`, boxShadow: `0 0 80px ${GOLD}08` }}>
@@ -764,8 +878,17 @@ function AuthScreen({ onAuthenticated }) {
           <div style={{ fontSize: 10, color: MUTED, letterSpacing: 3 }}>BEAUTY MARKETPLACE</div>
           <div style={{ width: 40, height: 2, background: `linear-gradient(90deg, ${GOLD}, ${GOLD_LIGHT})`, margin: "10px auto 0" }} />
         </div>
+        {mode === "signin" && (
+          <div style={{ display: "flex", background: DARK3, borderRadius: 10, padding: 3, marginBottom: 20 }}>
+            {[{ id: "email", label: "Email" }, { id: "phone", label: "Phone" }].map(m => (
+              <button key={m.id} onClick={() => setSigninMethod(m.id)} style={{ flex: 1, background: signinMethod === m.id ? GOLD : "transparent", border: "none", borderRadius: 8, color: signinMethod === m.id ? "#0A0A0B" : MUTED, padding: "8px 0", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{m.label}</button>
+            ))}
+          </div>
+        )}
         {mode === "signin"
-          ? <SignInForm onSwitch={() => setMode("signup")} onSuccess={onAuthenticated} />
+          ? (signinMethod === "email"
+              ? <SignInForm onSwitch={() => setMode("signup")} onSuccess={onAuthenticated} />
+              : <PhoneSignInForm onSwitch={() => setMode("signup")} onSuccess={onAuthenticated} />)
           : <SignUpForm onSwitch={() => setMode("signin")} onSuccess={onAuthenticated} />}
       </div>
     </div>
@@ -4041,6 +4164,52 @@ function PrivacySettingsPage({ user, onBack, onDeleteAccount }) {
   const [mfaError, setMfaError] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
 
+  const [verifiedPhone, setVerifiedPhone] = useState(null); // the auth account's confirmed phone, if any
+  const [phoneLoading, setPhoneLoading] = useState(true);
+  const [phoneStep, setPhoneStep] = useState("view"); // "view" | "enter" | "verify"
+  const [phoneInput, setPhoneInput] = useState("");
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [phoneSending, setPhoneSending] = useState(false);
+  const [phoneVerifying, setPhoneVerifying] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+
+  const refreshVerifiedPhone = () => {
+    supabase.auth.getUser().then(({ data }) => {
+      setVerifiedPhone(data?.user?.phone || null);
+      setPhoneLoading(false);
+    });
+  };
+  useEffect(refreshVerifiedPhone, []);
+
+  const sendPhoneCode = async () => {
+    setPhoneError("");
+    if (!/^\+\d{8,15}$/.test(phoneInput)) { setPhoneError("Enter your number in international format, e.g. +2348012345678"); return; }
+    setPhoneSending(true);
+    const { error } = await supabase.auth.updateUser({ phone: phoneInput });
+    setPhoneSending(false);
+    if (error) { console.error("Phone update error:", error); setPhoneError(authErrorMessage(error, "Couldn't send a verification code. Please try again.")); return; }
+    setPhoneStep("verify");
+  };
+
+  const verifyPhoneCode = async () => {
+    setPhoneError("");
+    if (!/^\d{4,8}$/.test(phoneOtp)) { setPhoneError("Enter the code we texted you."); return; }
+    setPhoneVerifying(true);
+    const { error } = await supabase.auth.verifyOtp({ phone: phoneInput, token: phoneOtp, type: "phone_change" });
+    setPhoneVerifying(false);
+    if (error) { console.error("Phone verify error:", error); setPhoneError(authErrorMessage(error, "Incorrect or expired code. Please try again.")); return; }
+    setPhoneOtp("");
+    setPhoneStep("view");
+    refreshVerifiedPhone();
+  };
+
+  const startPhoneChange = () => {
+    setPhoneInput("");
+    setPhoneOtp("");
+    setPhoneError("");
+    setPhoneStep("enter");
+  };
+
   const refreshMfaFactor = () => {
     supabase.auth.mfa.listFactors().then(({ data }) => {
       setMfaFactor(data?.totp?.find(f => f.status === "verified") || null);
@@ -4137,11 +4306,48 @@ function PrivacySettingsPage({ user, onBack, onDeleteAccount }) {
 
   const menuItems = [
     { icon: "🔑", label: "Change Password", sub: "Update your account password", page: "password" },
+    { icon: "📱", label: "Phone Number", sub: phoneLoading ? "..." : verifiedPhone ? `Verified: ${verifiedPhone}` : "Add a phone number to sign in with it", page: "phone" },
     { icon: "🔐", label: "Two-Factor Authentication", sub: mfaLoading ? "..." : mfaFactor ? "Currently: Enabled" : "Currently: Disabled", page: "2fa" },
     { icon: "👁️", label: "Profile Visibility", sub: isPublic ? "Currently: Public" : "Currently: Private", page: "visibility" },
     { icon: "🚫", label: "Blocked Users", sub: "Manage users you've blocked", page: "blocked", action: () => { loadBlocked(); setPrivacyPage("blocked"); } },
     { icon: "🗑️", label: "Delete Account", sub: "Permanently delete your STYLEX account", page: "delete", danger: true },
   ];
+
+  if (privacyPage === "phone") return (
+    <div>
+      <button onClick={() => { setPhoneStep("view"); setPrivacyPage(null); }} style={{ background: "none", border: "none", color: GOLD, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 18, padding: 0 }}>← Back</button>
+      <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 17, marginBottom: 8 }}>📱 Phone Number</h3>
+      <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>Verify a phone number to sign in with a text-message code instead of your password.</p>
+
+      {phoneError && <div style={{ background: `${RED}15`, border: `1px solid ${RED}44`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: RED, marginBottom: 14 }}>⚠️ {phoneError}</div>}
+
+      {phoneLoading ? (
+        <div style={{ textAlign: "center", padding: 30, color: MUTED }}>Loading...</div>
+      ) : phoneStep === "verify" ? (
+        <>
+          <p style={{ color: MUTED, fontSize: 12, marginBottom: 14 }}>We texted a code to {phoneInput}.</p>
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>VERIFICATION CODE</label>
+          <input value={phoneOtp} onChange={e => { setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 8)); setPhoneError(""); }} placeholder="123456" inputMode="numeric" style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => setPhoneStep("enter")} style={{ flex: 1, background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, color: TEXT, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Back</button>
+            <GoldBtn onClick={verifyPhoneCode} disabled={phoneVerifying} style={{ flex: 1, padding: "13px" }}>{phoneVerifying ? "Verifying..." : "Verify"}</GoldBtn>
+          </div>
+        </>
+      ) : phoneStep === "enter" || !verifiedPhone ? (
+        <>
+          <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 8 }}>PHONE NUMBER</label>
+          <input value={phoneInput} onChange={e => { setPhoneInput(e.target.value); setPhoneError(""); }} placeholder="+2348012345678" style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
+          <p style={{ color: MUTED, fontSize: 11, marginBottom: 16 }}>Include your country code, e.g. +234 for Nigeria.</p>
+          <GoldBtn onClick={sendPhoneCode} disabled={phoneSending} style={{ width: "100%", padding: "13px" }}>{phoneSending ? "Sending..." : "Send Code"}</GoldBtn>
+        </>
+      ) : (
+        <>
+          <div style={{ background: `${GREEN}15`, border: `1px solid ${GREEN}44`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: GREEN, marginBottom: 20 }}>✅ {verifiedPhone} is verified — you can sign in with this number.</div>
+          <button onClick={startPhoneChange} style={{ width: "100%", background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, color: TEXT, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Change Number</button>
+        </>
+      )}
+    </div>
+  );
 
   if (privacyPage === "2fa") return (
     <div>
@@ -5506,6 +5712,14 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
               </div>
               <span style={{ color: MUTED, fontSize: 16 }}>›</span>
             </button>
+            <button onClick={() => setSettingsPage("privacy")} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+              <span style={{ fontSize: 22 }}>🔒</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Privacy & Security</div>
+                <div style={{ fontSize: 12, color: MUTED }}>Password, phone, 2FA, blocked users</div>
+              </div>
+              <span style={{ color: MUTED, fontSize: 16 }}>›</span>
+            </button>
             <button onClick={() => setSettingsPage("help")} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
               <span style={{ fontSize: 22 }}>❓</span>
               <div style={{ flex: 1 }}>
@@ -5528,6 +5742,10 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
 
         {activeTab === "settings" && settingsPage === "notifications" && (
           <NotificationsSettingsPage user={user} onBack={() => setSettingsPage(null)} />
+        )}
+
+        {activeTab === "settings" && settingsPage === "privacy" && (
+          <PrivacySettingsPage user={user} onBack={() => setSettingsPage(null)} onDeleteAccount={async () => { await supabase.auth.signOut(); window.location.reload(); }} />
         )}
 
         {activeTab === "settings" && settingsPage === "help" && (
