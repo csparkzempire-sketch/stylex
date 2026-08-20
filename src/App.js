@@ -246,10 +246,11 @@ function InviteFriendModal({ user, onClose }) {
     if (!friendEmail.trim() || !/\S+@\S+\.\S+/.test(friendEmail)) { setError("Enter a valid email address."); return; }
     setSending(true);
     try {
-      const res = await fetch("/api/invite-notify", {
+      const res = await fetch("/api/collab-notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          kind: "invite",
           inviter_name: user.name,
           friend_email: friendEmail.trim(),
           referral_link: referralLink,
@@ -1019,7 +1020,7 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     if (dashTab !== "payouts" || !user) return;
     if (banks.length === 0 && !loadingBanks) {
       setLoadingBanks(true);
-      fetch("/api/flw-banks").then(r => r.json()).then(d => setBanks(d.banks || [])).catch(() => {}).finally(() => setLoadingBanks(false));
+      fetch("/api/flw-payout").then(r => r.json()).then(d => setBanks(d.banks || [])).catch(() => {}).finally(() => setLoadingBanks(false));
     }
     const loadBalance = () => {
       setLoadingBalance(true);
@@ -1093,10 +1094,10 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     if (!/^\d{10}$/.test(bankAccountNumber)) { setResolveError("Enter a valid 10-digit account number."); return; }
     setResolvingAccount(true);
     try {
-      const res = await fetch("/api/flw-resolve-account", {
+      const res = await fetch("/api/flw-payout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account_number: bankAccountNumber, bank_code: bankCode }),
+        body: JSON.stringify({ action: "resolve", account_number: bankAccountNumber, bank_code: bankCode }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not verify this account");
@@ -1128,9 +1129,10 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     setRequestingPayout(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch("/api/request-payout", {
+      const res = await fetch("/api/flw-payout", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({ action: "request" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Payout request failed");

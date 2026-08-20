@@ -1,8 +1,70 @@
+// Everything pro-payout-related lives in this one file — bank list, account
+// verification, payout requests, and the Flutterwave transfer webhook — to
+// stay under Vercel Hobby's 12-serverless-function cap. The four concerns
+// are distinguished by method / an explicit `action` field / the webhook's
+// signature header, and delegate to their own handler below.
+
 const MIN_PAYOUT_AMOUNT = 1000; // ₦1,000 minimum, to keep transfer fees from eating small payouts
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  // Flutterwave calls this same URL as its Transfers webhook.
+  if (req.method === "POST" && req.headers["verif-hash"]) {
+    return handleWebhook(req, res);
+  }
 
+  if (req.method === "GET") return handleListBanks(req, res);
+
+  if (req.method === "POST") {
+    const action = req.body?.action;
+    if (action === "resolve") return handleResolveAccount(req, res);
+    if (action === "request") return handleRequestPayout(req, res);
+    return res.status(400).json({ error: "Unknown or missing action" });
+  }
+
+  return res.status(405).json({ error: "Method not allowed" });
+}
+
+async function handleListBanks(req, res) {
+  try {
+    const response = await fetch("https://api.flutterwave.com/v3/banks/NG", {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${process.env.FLW_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+    const data = await response.json();
+    if (data.status !== "success") return res.status(500).json({ error: "Failed to load bank list" });
+    return res.status(200).json({ banks: (data.data || []).map(b => ({ code: b.code, name: b.name })) });
+  } catch (err) {
+    console.error("flw-payout (list banks) error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+async function handleResolveAccount(req, res) {
+  try {
+    const { account_number, bank_code } = req.body;
+    if (!account_number || !bank_code) return res.status(400).json({ error: "Missing account_number or bank_code" });
+
+    const response = await fetch("https://api.flutterwave.com/v3/accounts/resolve", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.FLW_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ account_number, account_bank: bank_code }),
+    });
+    const data = await response.json();
+    if (data.status !== "success") return res.status(400).json({ error: data.message || "Could not verify this account" });
+    return res.status(200).json({ account_name: data.data.account_name });
+  } catch (err) {
+    console.error("flw-payout (resolve account) error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+async function handleRequestPayout(req, res) {
   try {
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -88,7 +150,7 @@ export default async function handler(req, res) {
           currency: "NGN",
           narration: "STYLEX payout",
           reference,
-          callback_url: `${process.env.APP_URL || "https://app.stylex.pro"}/api/flw-transfer-webhook`,
+          callback_url: `${process.env.APP_URL || "https://app.stylex.pro"}/api/flw-payout`,
         }),
       });
       const transferData = await transferRes.json();
@@ -121,7 +183,51 @@ export default async function handler(req, res) {
     }
 
   } catch (err) {
-    console.error("request-payout error:", err);
+    console.error("flw-payout (request payout) error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+async function handleWebhook(req, res) {
+  // Flutterwave signs webhook calls with this header — verifying it stops
+  // anyone else from POSTing a fake "transfer successful" event.
+  const signature = req.headers["verif-hash"];
+  if (!signature || signature !== process.env.FLW_SECRET_HASH) {
+    return res.status(401).json({ error: "Invalid signature" });
+  }
+
+  try {
+    const { event, data } = req.body;
+    if (event !== "transfer.completed" || !data) return res.status(200).json({ received: true });
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const db = createClient(
+      process.env.SUPABASE_URL || "https://utvrujgqzheifblizarw.supabase.co",
+      process.env.SUPABASE_SERVICE_KEY
+    );
+
+    const reference = data.reference;
+    const status = (data.status || "").toUpperCase();
+    if (!reference) return res.status(200).json({ received: true });
+
+    const { data: payout } = await db.from("payouts").select("id, status").eq("reference", reference).maybeSingle();
+    if (!payout || payout.status !== "processing") {
+      // Already finalized (or unknown reference) — nothing to do.
+      return res.status(200).json({ received: true });
+    }
+
+    if (status === "SUCCESSFUL") {
+      await db.from("payouts").update({ status: "successful", completed_at: new Date().toISOString() }).eq("id", payout.id);
+    } else if (status === "FAILED") {
+      await db.from("payouts").update({ status: "failed", failure_reason: data.complete_message || "Transfer failed" }).eq("id", payout.id);
+      // Release the bookings back to the available balance so the pro can retry.
+      await db.from("bookings").update({ payout_id: null }).eq("payout_id", payout.id);
+    }
+
+    return res.status(200).json({ received: true });
+
+  } catch (err) {
+    console.error("flw-payout (webhook) error:", err);
     return res.status(500).json({ error: err.message });
   }
 }
