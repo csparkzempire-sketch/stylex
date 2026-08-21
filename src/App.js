@@ -661,6 +661,9 @@ function SignUpForm({ onSwitch, onSuccess }) {
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Invalid email";
     if (!form.phone) e.phone = "Required";
     else if (form.phone.length < 11) e.phone = "Enter valid Nigerian phone";
+    // Pros are grouped and searched by specialty throughout Explore, so an
+    // account without one is effectively unfindable.
+    if (userType === "professional" && !form.category) e.category = "Please choose your specialty";
     return e;
   };
 
@@ -797,11 +800,12 @@ function SignUpForm({ onSwitch, onSuccess }) {
           </div>
           {userType === "professional" && (
             <div>
-              <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>SPECIALTY</label>
-              <select value={form.category} onChange={e => update("category", e.target.value)} style={{ width: "100%", background: DARK3, border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: form.category ? TEXT : MUTED, fontSize: 14, outline: "none" }}>
+              <label style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6 }}>SPECIALTY *</label>
+              <select value={form.category} onChange={e => update("category", e.target.value)} style={{ width: "100%", background: DARK3, border: `1.5px solid ${errors.category ? RED : BORDER}`, borderRadius: 12, padding: "12px 14px", color: form.category ? TEXT : MUTED, fontSize: 14, outline: "none" }}>
                 <option value="">Select specialty</option>
                 {["Hairstylist", "Makeup Artist", "Barber", "Nail Tech", "Lash Tech", "Tattoo Artist", "Skincare"].map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+              {errors.category && <div style={{ fontSize: 11, color: RED, marginTop: 5 }}>⚠️ {errors.category}</div>}
             </div>
           )}
         </div>
@@ -3555,7 +3559,7 @@ function ExploreScreen({ onProfile, user, realPros = [], navRequest }) {
               )}
             </div>
             <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>{pro.handle}</div>
-            <Badge text={pro.category} color={pro.color} />
+            {pro.category && <Badge text={pro.category} color={pro.color} />}
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>₦{(pro.shopPrice || pro.mobilePrice || 0).toLocaleString()}</div>
@@ -5435,7 +5439,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
               {isBoosted && <span style={{ fontSize: 11, color: GREEN }}>🚀</span>}
             </div>
             {myUsername && <div style={{ fontSize: 13, color: GOLD, fontWeight: 600, marginBottom: 4 }}>@{myUsername}</div>}
-            <Badge text={pro.category} color={pro.color || GOLD} />
+            {pro.category && <Badge text={pro.category} color={pro.color || GOLD} />}
             <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>📍 {pro.location}</div>
           </div>
         </div>
@@ -5952,7 +5956,9 @@ function StylexApp() {
       .eq("user_type", "professional");
     if (!data) return;
 
-    const pros = data.filter(p => p.full_name && p.category);
+    // Only a missing name is disqualifying — a pro who hasn't picked a
+    // specialty yet still belongs in Explore rather than silently vanishing.
+    const pros = data.filter(p => p.full_name);
 
     // One batched query for repeat-customer % — computed here rather than
     // per-card, since a card list can show 20+ pros at once.
@@ -6001,7 +6007,7 @@ function StylexApp() {
       offersShop: p.offers_shop !== false,
       offersMobile: p.offers_mobile !== false,
       bio: p.bio || "",
-      tags: p.services ? p.services.split(",").map(s => s.trim()).filter(Boolean) : [p.category],
+      tags: p.services ? p.services.split(",").map(s => s.trim()).filter(Boolean) : [p.category].filter(Boolean),
       verified: p.is_verified === true,
       boosted: p.is_boosted === true,
       available: p.is_available !== false,
@@ -6073,10 +6079,14 @@ function StylexApp() {
   const filteredByCountry = selectedCountry === "ALL"
     ? realPros
     : realPros.filter(p => {
-        const c = (p.country || "").toUpperCase();
-        const match = COUNTRIES.find(x => x.code === selectedCountry);
-        const name = (match?.name || "").toUpperCase();
-        return c === selectedCountry || c === name;
+        const c = (p.country || "").trim().toUpperCase();
+        // A pro who never set a country shouldn't disappear from every
+        // filtered view — signup doesn't ask for one.
+        if (!c) return true;
+        // Country is stored inconsistently: the admin tool writes a code
+        // ("ng") while the picker selects a name ("Nigeria"), so match either.
+        const match = COUNTRIES.find(x => x.name === selectedCountry || x.code === selectedCountry);
+        return c === (match?.name || "").toUpperCase() || c === (match?.code || "").toUpperCase();
       });
 
   if (loading) {
