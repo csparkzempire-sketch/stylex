@@ -3,10 +3,10 @@ import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import CSparkzEmpireBrand from "./components/CSparkzEmpireBrand";
 
-const supabase = createClient(
-  "https://utvrujgqzheifblizarw.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0dnJ1amdxemhlaWZibGl6YXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDQ0ODEsImV4cCI6MjA5NzE4MDQ4MX0.nQNZD7ymLv1ikHzklgxeVrXFRDJMA0f46QNAsU-CWBc"
-);
+const SUPABASE_URL = "https://utvrujgqzheifblizarw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0dnJ1amdxemhlaWZibGl6YXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDQ0ODEsImV4cCI6MjA5NzE4MDQ4MX0.nQNZD7ymLv1ikHzklgxeVrXFRDJMA0f46QNAsU-CWBc";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E8D08A";
@@ -531,13 +531,16 @@ function SettingsPanel({ stats, follows, comments, showNotif }) {
 function AddProPanel({ showNotif, onCreated }) {
   const CATEGORIES = ["Barber", "Hairstylist", "Makeup Artist", "Nail Technician", "Lash Technician", "Braider", "Loctician", "Skincare / Esthetician", "Spa / Massage", "Other"];
 
-  const blank = { full_name: "", username: "", category: "Barber", location: "", country: "Nigeria", shop_price: "", bio: "", phone: "", email: "" };
+  const blank = { full_name: "", username: "", category: "Barber", location: "", country: "Nigeria", shop_price: "", bio: "", phone: "", email: "", password: "" };
   const [form, setForm] = useState(blank);
   const [avatarFile, setAvatarFile] = useState(null);
   const [workFiles, setWorkFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [createdCreds, setCreatedCreds] = useState(null); // { email, password } — shown once, for the admin to pass on
+  const [credsCopied, setCredsCopied] = useState(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -552,11 +555,42 @@ function AddProPanel({ showNotif, onCreated }) {
     return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
   };
 
+  // Signing a new pro up would normally replace the admin's own session in
+  // localStorage and log them out of this panel. An isolated client with its
+  // own storage key and no session persistence keeps the new pro's session
+  // in memory only, so the admin stays signed in.
+  const makeIsolatedClient = () => createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, storageKey: "sx-admin-provisioning" },
+  });
+
+  const generatePassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    const bytes = new Uint32Array(12);
+    crypto.getRandomValues(bytes);
+    // Guarantees the uppercase + digit the app's own sign-up rules require.
+    const body = Array.from(bytes, b => chars[b % chars.length]).join("");
+    set("password", `Sx${body}7`);
+    setPasswordError("");
+  };
+
   const handleCreate = async () => {
     setEmailError("");
+    setPasswordError("");
+    setCreatedCreds(null);
+    const email = form.email.trim();
+    const password = form.password;
+    const wantsLogin = !!password;
+
     if (!form.full_name.trim()) { showNotif("Enter the pro's name", "error"); return; }
     if (workFiles.length === 0) { showNotif("Add at least one work photo", "error"); return; }
-    if (form.email.trim() && !/\S+@\S+\.\S+/.test(form.email.trim())) { setEmailError("Enter a valid email, or leave it blank."); return; }
+    if (email && !/\S+@\S+\.\S+/.test(email)) { setEmailError("Enter a valid email, or leave it blank."); return; }
+    if (wantsLogin && !email) { setEmailError("An email is required to create a login."); return; }
+    // Mirrors the rules the app's own sign-up screen enforces, so the pro can
+    // later change their password without tripping validation.
+    if (wantsLogin && (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password))) {
+      setPasswordError("Min 8 characters, with one uppercase letter and one number.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -578,9 +612,8 @@ function AddProPanel({ showNotif, onCreated }) {
       if (!avatarUrl) avatarUrl = workUrls[0];
 
       // 3. create the professional profile
-      setProgress("Creating profile...");
       const username = form.username.trim() || slugify(form.full_name);
-      const { data: profile, error: profErr } = await supabase.from("profiles").insert({
+      const profileFields = {
         full_name: form.full_name.trim(),
         username,
         user_type: "professional",
@@ -590,15 +623,51 @@ function AddProPanel({ showNotif, onCreated }) {
         shop_price: form.shop_price ? parseInt(form.shop_price, 10) : null,
         bio: form.bio.trim() || null,
         phone: form.phone.trim() || null,
-        email: form.email.trim() || null,
+        email: email || null,
         avatar_url: avatarUrl,
         is_verified: true,
         is_available: true,
         account_status: "active",
-      }).select().maybeSingle();
+      };
 
-      if (profErr) throw profErr;
-      const proId = profile.id;
+      let proId;
+      if (wantsLogin) {
+        // With a password, this becomes a real account the pro can sign into —
+        // the profile row is keyed to their auth id so the two never drift.
+        setProgress("Creating login account...");
+        const authClient = makeIsolatedClient();
+        const { data: signUpData, error: signUpErr } = await authClient.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: profileFields.full_name, user_type: "professional" } },
+        });
+
+        if (signUpErr) {
+          const already = /already registered|already been registered/i.test(signUpErr.message || "");
+          throw new Error(already
+            ? `${email} already has a STYLEX account. Use a different email, or have them sign in and claim the profile.`
+            : signUpErr.message);
+        }
+        // Supabase returns a success-shaped response with no identities when the
+        // email is already taken, rather than erroring outright.
+        if (!signUpData?.user || (signUpData.user.identities && signUpData.user.identities.length === 0)) {
+          throw new Error(`${email} already has a STYLEX account. Use a different email, or have them sign in and claim the profile.`);
+        }
+
+        proId = signUpData.user.id;
+        setProgress("Creating profile...");
+        // Written through the new pro's own session so the row passes the
+        // "you may only insert your own profile" policy.
+        const { error: profErr } = await authClient.from("profiles").insert({ id: proId, ...profileFields });
+        await authClient.auth.signOut();
+        if (profErr) throw profErr;
+      } else {
+        setProgress("Creating profile...");
+        const { data: profile, error: profErr } = await supabase.from("profiles")
+          .insert(profileFields).select().maybeSingle();
+        if (profErr) throw profErr;
+        proId = profile.id;
+      }
 
       // 4. write each photo to BOTH posts and portfolio (linked by pro_id)
       setProgress("Building portfolio...");
@@ -622,6 +691,9 @@ function AddProPanel({ showNotif, onCreated }) {
       if (portErr) throw portErr;
 
       showNotif(`${form.full_name} is live in Explore ✅`);
+      // Surfaced once, right after creation — the password is never stored
+      // anywhere readable, so this is the admin's only chance to pass it on.
+      if (wantsLogin) setCreatedCreds({ email, password, name: form.full_name.trim() });
       setForm(blank); setAvatarFile(null); setWorkFiles([]); setProgress("");
       if (onCreated) onCreated();
     } catch (err) {
@@ -665,9 +737,27 @@ function AddProPanel({ showNotif, onCreated }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <div><label style={labelStyle}>PHONE (for your records)</label><input style={inputStyle} value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="080..." /></div>
           <div>
-            <label style={labelStyle}>EMAIL (for your records)</label>
+            <label style={labelStyle}>EMAIL {form.password ? "*" : "(for your records)"}</label>
             <input style={{ ...inputStyle, borderColor: emailError ? RED : BORDER }} type="email" value={form.email} onChange={e => { set("email", e.target.value); setEmailError(""); }} placeholder="pro@email.com" />
             {emailError && <div style={{ fontSize: 11, color: RED, marginTop: 5 }}>{emailError}</div>}
+          </div>
+        </div>
+
+        <div style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16 }}>
+          <label style={labelStyle}>LOGIN PASSWORD (optional)</label>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input
+              style={{ ...inputStyle, borderColor: passwordError ? RED : BORDER, fontFamily: form.password ? "monospace" : "inherit" }}
+              type="text"
+              value={form.password}
+              onChange={e => { set("password", e.target.value); setPasswordError(""); }}
+              placeholder="Leave blank for a listing-only profile"
+            />
+            <button type="button" onClick={generatePassword} style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 10, color: GOLD, padding: "0 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Generate</button>
+          </div>
+          {passwordError && <div style={{ fontSize: 11, color: RED, marginTop: 5 }}>{passwordError}</div>}
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
+            Set a password to create a real account the pro can log into with the email above — you'll get the credentials to send them. Leave blank to just list them in Explore with no login.
           </div>
         </div>
 
@@ -687,6 +777,34 @@ function AddProPanel({ showNotif, onCreated }) {
 
         {saving && progress && (
           <div style={{ background: DARK3, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 16px", fontSize: 13, color: GOLD }}>⏳ {progress}</div>
+        )}
+
+        {createdCreds && (
+          <div style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}44`, borderRadius: 12, padding: 18 }}>
+            <div style={{ fontWeight: 800, fontSize: 14, color: GREEN, marginBottom: 6 }}>✅ Account created for {createdCreds.name}</div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 14, lineHeight: 1.5 }}>
+              Send these to them now — the password can't be shown again. They should change it after their first sign-in.
+            </div>
+            <div style={{ background: DARK, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 14px", fontFamily: "monospace", fontSize: 13, color: TEXT, marginBottom: 12, wordBreak: "break-all" }}>
+              <div>Email: {createdCreds.email}</div>
+              <div style={{ marginTop: 4 }}>Password: {createdCreds.password}</div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const text = `Your STYLEX pro account is ready.\n\nEmail: ${createdCreds.email}\nPassword: ${createdCreds.password}\n\nSign in at https://app.stylex.pro and change your password from Settings → Privacy & Security.`;
+                  navigator.clipboard?.writeText(text)
+                    .then(() => { setCredsCopied(true); setTimeout(() => setCredsCopied(false), 2000); })
+                    .catch(() => showNotif("Couldn't copy — select the text above instead", "error"));
+                }}
+                style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}44`, borderRadius: 10, color: GOLD, padding: "10px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >
+                {credsCopied ? "✓ Copied" : "Copy message"}
+              </button>
+              <button type="button" onClick={() => setCreatedCreds(null)} style={{ background: "transparent", border: `1px solid ${BORDER}`, borderRadius: 10, color: MUTED, padding: "10px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Dismiss</button>
+            </div>
+          </div>
         )}
 
         <button onClick={handleCreate} disabled={saving} style={{ background: saving ? DARK3 : `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`, color: saving ? MUTED : "#0A0A0B", border: "none", borderRadius: 12, padding: "15px", fontWeight: 800, fontSize: 15, cursor: saving ? "not-allowed" : "pointer" }}>
