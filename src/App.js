@@ -1136,10 +1136,17 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
         setIntroVideoUrl(data.intro_video_url || "");
         setMonthlyGoal(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
         setGoalInput(data.monthly_revenue_goal ? String(data.monthly_revenue_goal) : "");
-        setBankCode(data.bank_code || "");
-        setBankAccountNumber(data.bank_account_number || "");
-        setSavedBankAccountName(data.bank_account_name || "");
-        setResolvedAccountName(data.bank_account_name || "");
+      }
+
+      // Bank details are kept in their own owner-only table, not on profiles.
+      const { data: payoutAcct } = await supabase.from("payout_accounts")
+        .select("bank_code, bank_account_number, bank_account_name")
+        .eq("pro_id", user.id).maybeSingle();
+      if (payoutAcct) {
+        setBankCode(payoutAcct.bank_code || "");
+        setBankAccountNumber(payoutAcct.bank_account_number || "");
+        setSavedBankAccountName(payoutAcct.bank_account_name || "");
+        setResolvedAccountName(payoutAcct.bank_account_name || "");
       }
       setLoading(false);
     };
@@ -1251,14 +1258,16 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     if (!resolvedAccountName) return;
     setSavingBank(true);
     const bankName = banks.find(b => b.code === bankCode)?.name || "";
-    await supabase.from("profiles").update({
+    const { error } = await supabase.from("payout_accounts").upsert({
+      pro_id: user.id,
       bank_account_number: bankAccountNumber,
       bank_code: bankCode,
       bank_name: bankName,
       bank_account_name: resolvedAccountName,
-    }).eq("id", user.id);
-    setSavedBankAccountName(resolvedAccountName);
+    }, { onConflict: "pro_id" });
     setSavingBank(false);
+    if (error) { setPayoutError("Couldn't save your bank details: " + error.message); return; }
+    setSavedBankAccountName(resolvedAccountName);
     setBankSaved(true);
     setTimeout(() => setBankSaved(false), 2500);
   };

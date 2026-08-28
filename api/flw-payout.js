@@ -85,11 +85,13 @@ async function handleRequestPayout(req, res) {
     // depend on the pro's own RLS-scoped write access.
     const db = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    const { data: profile, error: profileErr } = await db.from("profiles")
-      .select("bank_account_number, bank_code, bank_account_name, full_name")
-      .eq("id", proId).maybeSingle();
-    if (profileErr || !profile) return res.status(400).json({ error: "Profile not found" });
-    if (!profile.bank_account_number || !profile.bank_code) {
+    // Bank details live in their own owner-only table rather than on profiles,
+    // which every signed-in user can read.
+    const { data: profile, error: profileErr } = await db.from("payout_accounts")
+      .select("bank_account_number, bank_code, bank_account_name")
+      .eq("pro_id", proId).maybeSingle();
+    if (profileErr) return res.status(500).json({ error: profileErr.message });
+    if (!profile || !profile.bank_account_number || !profile.bank_code) {
       return res.status(400).json({ error: "Add your bank details before requesting a payout" });
     }
 
