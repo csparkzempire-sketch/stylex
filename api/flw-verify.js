@@ -6,11 +6,20 @@ webpush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY
 );
 
+// Server-side source of truth for what each plan costs. The browser sends the
+// checkout amount, so prices can never be trusted from the request — every
+// paid effect below is gated on the amount Flutterwave actually settled.
+const PLAN_PRICING = {
+  verification: { monthly: 2500, annually: 25000 },
+  boost: { monthly: 5000, annually: 50000 },
+};
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { tx_ref, tx_id, type, meta } = req.body;
+    const { tx_id } = req.body;
+    if (!tx_id) return res.status(400).json({ error: "Missing tx_id" });
 
     // Verify transaction with Flutterwave
     const response = await fetch(`https://api.flutterwave.com/v3/transactions/${tx_id}/verify`, {
@@ -23,21 +32,40 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    if (data.status !== "success" || data.data.status !== "successful") {
-      return res.status(400).json({ error: "Payment verification failed", data });
+    if (data.status !== "success" || data.data?.status !== "successful") {
+      return res.status(400).json({ error: "Payment verification failed" });
     }
 
-    const { amount, currency, customer } = data.data;
+    // Everything below comes from Flutterwave's own record of the transaction,
+    // never from the request body. The body used to carry `type` and `meta`,
+    // which let a caller pay for one thing and claim another (or replay a
+    // stranger's transaction id) to grant themselves a paid plan for free.
+    const amount = Number(data.data.amount);
+    const currency = data.data.currency;
+    const tx_ref = data.data.tx_ref;
+    const meta = data.data.meta || {};
+    const type = meta.type;
 
-    // Store payment record in Supabase
+    if (currency !== "NGN") {
+      return res.status(400).json({ error: "Unexpected currency" });
+    }
+
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
       process.env.SUPABASE_URL || "https://utvrujgqzheifblizarw.supabase.co",
       process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
     );
 
+    // Idempotency — the same transaction must never apply its effect twice,
+    // however many times this endpoint is called with it.
+    const { data: seen } = await supabase.from("payments")
+      .select("id").eq("flw_tx_id", String(tx_id)).maybeSingle();
+    if (seen) {
+      return res.status(200).json({ success: true, already_processed: true, amount, currency });
+    }
+
     await supabase.from("payments").insert({
-      user_id: meta?.user_id || null,
+      user_id: meta.user_id || null,
       type,
       amount,
       flw_tx_ref: tx_ref,
@@ -47,15 +75,29 @@ export default async function handler(req, res) {
     });
 
     // Apply the effect based on payment type
-    if (type === "booking" && meta?.booking_id) {
-      const { data: booking } = await supabase.from("bookings").update({
+    if (type === "booking" && meta.booking_id) {
+      const { data: booking } = await supabase.from("bookings")
+        .select("id, price, reference, client_id, service, date, time, payment_status")
+        .eq("id", meta.booking_id).maybeSingle();
+
+      if (!booking) return res.status(400).json({ error: "Unknown booking" });
+      // The reference is generated with the booking, so this ties the payment
+      // to that exact booking rather than any booking id the caller names.
+      if (booking.reference !== tx_ref) {
+        return res.status(400).json({ error: "Payment does not match this booking" });
+      }
+      if (amount < Number(booking.price)) {
+        return res.status(400).json({ error: "Amount paid is less than the booking total" });
+      }
+
+      await supabase.from("bookings").update({
         payment_status: "paid",
         flw_tx_ref: tx_ref,
         flw_tx_id: String(tx_id),
         status: "confirmed",
-      }).eq("id", meta.booking_id).select().maybeSingle();
+      }).eq("id", booking.id);
 
-      if (booking?.client_id) {
+      if (booking.client_id) {
         const { data: sub } = await supabase.from("push_subscriptions").select("subscription").eq("user_id", booking.client_id).maybeSingle();
         if (sub) {
           try {
@@ -88,30 +130,34 @@ export default async function handler(req, res) {
       }
     }
 
-    if (type === "verification" && meta?.user_id) {
+    if ((type === "verification" || type === "boost") && meta.user_id) {
+      const billing = meta.billing === "annually" ? "annually" : "monthly";
+      const required = PLAN_PRICING[type][billing];
+      // Without this, a ₦100 checkout carrying meta.type "verification" would
+      // have bought a full plan.
+      if (amount < required) {
+        return res.status(400).json({ error: "Amount paid does not cover this plan" });
+      }
+
       const expires = new Date();
-      if (meta.billing === "annually") expires.setFullYear(expires.getFullYear() + 1);
+      if (billing === "annually") expires.setFullYear(expires.getFullYear() + 1);
       else expires.setMonth(expires.getMonth() + 1);
-      await supabase.from("profiles").update({
-        is_verified: true,
-        verification_plan: meta.billing || "monthly",
-        verification_expires: expires.toISOString(),
-      }).eq("id", meta.user_id);
+
+      const updates = type === "verification"
+        ? { is_verified: true, verification_plan: billing, verification_expires: expires.toISOString() }
+        : { is_boosted: true, boost_plan: billing, boost_expires: expires.toISOString() };
+
+      await supabase.from("profiles").update(updates).eq("id", meta.user_id);
     }
 
-    if (type === "boost" && meta?.user_id) {
-      const expires = new Date();
-      if (meta.billing === "annually") expires.setFullYear(expires.getFullYear() + 1);
-      else expires.setMonth(expires.getMonth() + 1);
-      await supabase.from("profiles").update({
-        is_boosted: true,
-        boost_plan: meta.billing || "monthly",
-        boost_expires: expires.toISOString(),
-      }).eq("id", meta.user_id);
-    }
-
-    if (type === "product" && meta?.product_id) {
-      await supabase.from("products").update({ sold: true }).eq("id", meta.product_id);
+    if (type === "product" && meta.product_id) {
+      const { data: product } = await supabase.from("products")
+        .select("id, price").eq("id", meta.product_id).maybeSingle();
+      if (!product) return res.status(400).json({ error: "Unknown product" });
+      if (amount < Number(product.price)) {
+        return res.status(400).json({ error: "Amount paid is less than the product price" });
+      }
+      await supabase.from("products").update({ sold: true }).eq("id", product.id);
     }
 
     return res.status(200).json({ success: true, amount, currency });

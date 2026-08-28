@@ -1,10 +1,32 @@
+import { getCaller } from "../lib/auth.js";
+
+const APP_URL = process.env.APP_URL || "https://app.stylex.pro";
+
+// Emails render user-supplied text as HTML, so anything interpolated below has
+// to be escaped or a sender could inject markup into the message.
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 // Also handles friend-invite emails (kind: "invite") — folded in here rather
 // than a separate function file to stay under Vercel Hobby's 12-function cap.
 async function sendInviteEmail(req, res) {
-  const { inviter_name, friend_email, referral_link } = req.body;
-  if (!friend_email || !referral_link) {
+  const { friend_email } = req.body;
+  if (!friend_email) {
     return res.status(400).json({ error: "Missing required fields" });
   }
+
+  // Was open to anyone: an unauthenticated caller could send mail from the
+  // STYLEX domain to any address, with a link of their choosing.
+  const caller = await getCaller(req);
+  if (!caller) return res.status(401).json({ error: "Sign in required" });
+
+  // Built server-side from the caller's own id — never taken from the body,
+  // so an invite can't be turned into a link to somewhere else.
+  const referral_link = `${APP_URL}/?ref=${caller.id}`;
+  const inviter_name = req.body.inviter_name;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -27,11 +49,11 @@ async function sendInviteEmail(req, res) {
 
           <div style="background: #16161C; border: 1px solid #2A2A35; border-radius: 14px; padding: 28px; margin-bottom: 24px; text-align: center;">
             <div style="font-size: 22px; margin-bottom: 10px;">💌</div>
-            <div style="font-size: 18px; font-weight: 800; color: #C9A84C; margin-bottom: 8px;">${inviter_name || "A friend"} thinks you'd love STYLEX</div>
+            <div style="font-size: 18px; font-weight: 800; color: #C9A84C; margin-bottom: 8px;">${esc(inviter_name || "A friend")} thinks you'd love STYLEX</div>
             <div style="font-size: 14px; color: #F0EDE8cc; line-height: 1.7;">Book trusted beauty professionals near you, or list your own services and start getting bookings.</div>
           </div>
 
-          <a href="${referral_link}" style="display: block; background: linear-gradient(135deg, #C9A84C, #E8D08A); color: #0A0A0B; text-align: center; padding: 14px; border-radius: 12px; font-weight: 800; font-size: 14px; text-decoration: none; margin-bottom: 20px;">
+          <a href="${esc(referral_link)}" style="display: block; background: linear-gradient(135deg, #C9A84C, #E8D08A); color: #0A0A0B; text-align: center; padding: 14px; border-radius: 12px; font-weight: 800; font-size: 14px; text-decoration: none; margin-bottom: 20px;">
             Join STYLEX →
           </a>
 
@@ -92,22 +114,22 @@ export default async function handler(req, res) {
 
             <div style="background: #16161C; border: 1px solid #2A2A35; border-radius: 14px; padding: 28px; margin-bottom: 20px;">
               <div style="font-size: 22px; margin-bottom: 6px;">${typeEmoji}</div>
-              <div style="font-size: 20px; font-weight: 800; color: #C9A84C; margin-bottom: 4px;">${company_name}</div>
-              <div style="font-size: 13px; color: #888898; text-transform: capitalize;">Request type: ${request_type || "collaboration"}</div>
+              <div style="font-size: 20px; font-weight: 800; color: #C9A84C; margin-bottom: 4px;">${esc(company_name)}</div>
+              <div style="font-size: 13px; color: #888898; text-transform: capitalize;">Request type: ${esc(request_type || "collaboration")}</div>
             </div>
 
             <div style="background: #16161C; border: 1px solid #2A2A35; border-radius: 14px; padding: 24px; margin-bottom: 20px;">
               <div style="font-size: 11px; color: #888898; font-weight: 700; letter-spacing: 1px; margin-bottom: 10px;">CONTACT EMAIL</div>
-              <a href="mailto:${contact_email}" style="font-size: 15px; color: #C9A84C; font-weight: 700; text-decoration: none;">📧 ${contact_email}</a>
+              <a href="mailto:${esc(contact_email)}" style="font-size: 15px; color: #C9A84C; font-weight: 700; text-decoration: none;">📧 ${esc(contact_email)}</a>
             </div>
 
             <div style="background: #16161C; border: 1px solid #2A2A35; border-radius: 14px; padding: 24px; margin-bottom: 28px;">
               <div style="font-size: 11px; color: #888898; font-weight: 700; letter-spacing: 1px; margin-bottom: 10px;">THEIR MESSAGE</div>
-              <div style="font-size: 14px; color: #F0EDE8; line-height: 1.7;">${message || "No message provided"}</div>
+              <div style="font-size: 14px; color: #F0EDE8; line-height: 1.7;">${esc(message || "No message provided")}</div>
             </div>
 
-            <a href="mailto:${contact_email}?subject=Re: Partnership with STYLEX" style="display: block; background: linear-gradient(135deg, #C9A84C, #E8D08A); color: #0A0A0B; text-align: center; padding: 14px; border-radius: 12px; font-weight: 800; font-size: 14px; text-decoration: none; margin-bottom: 20px;">
-              Reply to ${company_name} →
+            <a href="mailto:${esc(contact_email)}?subject=Re: Partnership with STYLEX" style="display: block; background: linear-gradient(135deg, #C9A84C, #E8D08A); color: #0A0A0B; text-align: center; padding: 14px; border-radius: 12px; font-weight: 800; font-size: 14px; text-decoration: none; margin-bottom: 20px;">
+              Reply to ${esc(company_name)} →
             </a>
 
             <div style="text-align: center; font-size: 11px; color: #888898; line-height: 1.7;">

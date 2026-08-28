@@ -39,6 +39,10 @@ function openFlutterwaveCheckout({ amount, email, name, phone, txRef, meta, onSu
     currency: "NGN",
     payment_options: "card,banktransfer,ussd,mobilemoney",
     customer: { email, name, phone_number: phone || "" },
+    // Attached to the transaction itself so Flutterwave stores it and returns
+    // it at verification time. The server reads what it purchased from there
+    // rather than from the callback, so it can't be swapped after payment.
+    meta,
     customizations: {
       title: "STYLEX",
       description: meta?.description || "Payment",
@@ -50,7 +54,7 @@ function openFlutterwaveCheckout({ amount, email, name, phone, txRef, meta, onSu
           const res = await fetch("/api/flw-verify", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tx_ref: response.tx_ref, tx_id: response.transaction_id, type: meta?.type, meta }),
+            body: JSON.stringify({ tx_id: response.transaction_id }),
           });
           const data = await res.json();
           if (data.success) onSuccess(response);
@@ -79,6 +83,21 @@ function authErrorMessage(error, fallback) {
   return fallback;
 }
 
+// ─── AUTHENTICATED API HELPER ───
+// The notification endpoints verify the caller's Supabase session, so every
+// call to them has to carry the access token.
+async function apiFetch(path, body) {
+  const { data: { session } } = await supabase.auth.getSession();
+  return fetch(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 // ─── PUSH NOTIFICATION HELPER ───
 async function registerPushNotifications(user) {
   try {
@@ -91,11 +110,7 @@ async function registerPushNotifications(user) {
       userVisibleOnly: true,
       applicationServerKey: process.env.REACT_APP_VAPID_PUBLIC_KEY,
     });
-    await fetch("/api/push", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "subscribe", user_id: user.id, subscription: sub.toJSON() }),
-    });
+    await apiFetch("/api/push", { action: "subscribe", subscription: sub.toJSON() });
     console.log("✅ Push notifications registered");
   } catch (err) {
     console.error("Push registration error:", err);
@@ -260,15 +275,12 @@ function InviteFriendModal({ user, onClose }) {
     if (!friendEmail.trim() || !/\S+@\S+\.\S+/.test(friendEmail)) { setError("Enter a valid email address."); return; }
     setSending(true);
     try {
-      const res = await fetch("/api/collab-notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "invite",
-          inviter_name: user.name,
-          friend_email: friendEmail.trim(),
-          referral_link: referralLink,
-        }),
+      // The referral link is derived server-side from the signed-in caller,
+      // so it isn't sent from here.
+      const res = await apiFetch("/api/collab-notify", {
+        kind: "invite",
+        inviter_name: user.name,
+        friend_email: friendEmail.trim(),
       });
       if (!res.ok) throw new Error("Failed to send");
       setSent(true);
@@ -1325,16 +1337,8 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
 
     if (isAvailable && !wasAvailable) {
       // Fire-and-forget — a failed notification shouldn't block saving the profile.
-      fetch("/api/notify-followers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pro_id: user.id, title: `${user.name} is now available`, body: "Book them before their slots fill up.", url: "https://app.stylex.pro" }),
-      }).catch(() => {});
-      fetch("/api/notify-followers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pro_id: user.id, audience: "waitlist", title: `${user.name} is available again!`, body: "You were on the waitlist — book now before slots fill up.", url: "https://app.stylex.pro" }),
-      }).catch(() => {});
+      apiFetch("/api/notify-followers", { pro_id: user.id, title: `${user.name} is now available`, body: "Book them before their slots fill up.", url: "https://app.stylex.pro" }).catch(() => {});
+      apiFetch("/api/notify-followers", { pro_id: user.id, audience: "waitlist", title: `${user.name} is available again!`, body: "You were on the waitlist — book now before slots fill up.", url: "https://app.stylex.pro" }).catch(() => {});
     }
     setWasAvailable(isAvailable);
 
@@ -1890,16 +1894,11 @@ function BookingModal({ pro, onClose, user }) {
         // Notify the professional about the new booking
         if (pro.id && pro.id.startsWith("db-")) {
           const proId = pro.id.replace("db-", "");
-          fetch("/api/push", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "send",
-              user_id: proId,
-              title: "📅 New Booking!",
-              body: `${user.name} just booked ${pro.tags[selectedService]} with you`,
-              url: "https://stylex.pro",
-            }),
+          apiFetch("/api/push", {
+            action: "send",
+            user_id: proId,
+            title: "📅 New Booking!",
+            body: `${user.name} just booked ${pro.tags[selectedService]} with you`,
           }).catch(() => {});
         }
         setStep(4);
@@ -3103,11 +3102,7 @@ function CreatePostModal({ user, onClose, onPosted }) {
       if (insErr) { setError("Uploaded but couldn't save post: " + insErr.message); setUploading(false); return; }
 
       // Fire-and-forget — a failed notification shouldn't block the post itself.
-      fetch("/api/notify-followers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pro_id: user.id, title: `${user.name} just posted new work`, body: caption.trim() || "Check out their latest post on Stylex", url: "https://app.stylex.pro" }),
-      }).catch(() => {});
+      apiFetch("/api/notify-followers", { pro_id: user.id, title: `${user.name} just posted new work`, body: caption.trim() || "Check out their latest post on Stylex", url: "https://app.stylex.pro" }).catch(() => {});
 
       setUploading(false);
       setDone(true);

@@ -264,17 +264,19 @@ function ChatScreen({ user, conversation, onBack }) {
     await supabase.from("conversations").update({ last_message: lastMsg, last_message_at: new Date().toISOString(), ...unreadUpdate }).eq("id", conversation.id);
 
     // Send push notification to other person
-    fetch("/api/push", {
+    supabase.auth.getSession().then(({ data: { session } }) => fetch("/api/push", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
       body: JSON.stringify({
         action: "send",
         user_id: other.id,
         title: `💬 ${user.name}`,
         body: lastMsg,
-        url: "https://stylex.pro",
       }),
-    }).catch(() => {});
+    })).catch(() => {});
 
     setSending(false);
   };

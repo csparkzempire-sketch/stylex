@@ -15,6 +15,7 @@
 // (already set — same ones /api/push.js uses).
 // ============================================================
 import webpush from "web-push";
+import { getCaller, isAdmin } from "../lib/auth.js";
 
 webpush.setVapidDetails(
   process.env.VAPID_EMAIL,
@@ -27,6 +28,14 @@ export default async function handler(req, res) {
   try {
     const { pro_id, title, body, url, audience } = req.body || {};
     if (!pro_id || !title) return res.status(400).json({ error: "Missing fields" });
+
+    // Was open to anyone: a stranger could blast an arbitrary message to any
+    // pro's entire follower base, appearing to come from that pro.
+    const caller = await getCaller(req);
+    if (!caller) return res.status(401).json({ error: "Sign in required" });
+    if (caller.id !== pro_id && !(await isAdmin(caller.id))) {
+      return res.status(403).json({ error: "You can only notify your own audience" });
+    }
 
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
