@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "stylex",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 3000
+    },
+    {
+      "name": "sparkz",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/Users/HomePC/Desktop/sparkz", "start"],
+      "port": 3000
+    },
+    {
+      "name": "stylex-pro",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "3002", "--directory", "C:/Users/HomePC/Desktop/stylex-pro"],
+      "port": 3002
+    },
+    {
+      "name": "csparkz-digital",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/Users/HomePC/Desktop/C-SPARKZ-DIGITAL", "run", "dev", "--", "-p", "3003"],
+      "port": 3003
+    },
+    {
+      "name": "csparkz-empire",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "3004", "--directory", "C:/Users/HomePC/Desktop/csparkz-empire"],
+      "port": 3004
+    }
+  ]
+}
