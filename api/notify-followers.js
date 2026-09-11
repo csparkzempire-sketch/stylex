@@ -16,6 +16,7 @@
 // ============================================================
 import webpush from "web-push";
 import { getCaller, isAdmin } from "../lib/auth.js";
+import { limited } from "../lib/rateLimit.js";
 
 webpush.setVapidDetails(
   process.env.VAPID_EMAIL,
@@ -25,6 +26,9 @@ webpush.setVapidDetails(
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  if (await limited(req, res, "notify-followers", { limit: 10, windowSeconds: 60 })) return;
+
   try {
     const { pro_id, title, body, url, audience } = req.body || {};
     if (!pro_id || !title) return res.status(400).json({ error: "Missing fields" });
@@ -37,10 +41,14 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: "You can only notify your own audience" });
     }
 
+    if (!process.env.SUPABASE_SERVICE_KEY) {
+      console.error("notify-followers: SUPABASE_SERVICE_KEY is not configured");
+      return res.status(500).json({ error: "Server misconfigured" });
+    }
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
-      "https://utvrujgqzheifblizarw.supabase.co",
-      process.env.SUPABASE_SERVICE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0dnJ1amdxemhlaWZibGl6YXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDQ0ODEsImV4cCI6MjA5NzE4MDQ4MX0.nQNZD7ymLv1ikHzklgxeVrXFRDJMA0f46QNAsU-CWBc"
+      process.env.SUPABASE_URL || "https://utvrujgqzheifblizarw.supabase.co",
+      process.env.SUPABASE_SERVICE_KEY
     );
 
     let userIds;
@@ -88,6 +96,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ sent, failed });
   } catch (err) {
     console.error("notify-followers error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Something went wrong." });
   }
 }

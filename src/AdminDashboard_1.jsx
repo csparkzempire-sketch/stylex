@@ -133,9 +133,6 @@ function AdminLogin({ onLogin }) {
 function AnalyticsPanel({ bookings, users, posts, products, stats }) {
   const [period, setPeriod] = useState("monthly");
 
-  // ── helpers ──
-  const monthName = (d) => ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][new Date(d).getMonth()];
-  const weekLabel = (d) => { const day = new Date(d); const week = Math.ceil(day.getDate() / 7); return `W${week} ${monthName(d)}`; };
   const now = new Date();
 
   // Build revenue data grouped by period

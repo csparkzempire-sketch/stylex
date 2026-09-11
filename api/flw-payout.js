@@ -3,14 +3,21 @@
 // stay under Vercel Hobby's 12-serverless-function cap. The four concerns
 // are distinguished by method / an explicit `action` field / the webhook's
 // signature header, and delegate to their own handler below.
+import { getCaller } from "../lib/auth.js";
+import { limited } from "../lib/rateLimit.js";
 
 const MIN_PAYOUT_AMOUNT = 1000; // ₦1,000 minimum, to keep transfer fees from eating small payouts
 
 export default async function handler(req, res) {
-  // Flutterwave calls this same URL as its Transfers webhook.
+  // Flutterwave calls this same URL as its Transfers webhook — never
+  // rate-limited or auth-gated, it's authenticated by its own signature
+  // header inside handleWebhook, and Flutterwave's retries must never be
+  // dropped by an IP-keyed limiter shared across its infrastructure.
   if (req.method === "POST" && req.headers["verif-hash"]) {
     return handleWebhook(req, res);
   }
+
+  if (await limited(req, res, "flw-payout", { limit: 20, windowSeconds: 60 })) return;
 
   if (req.method === "GET") return handleListBanks(req, res);
 
@@ -25,6 +32,11 @@ export default async function handler(req, res) {
 }
 
 async function handleListBanks(req, res) {
+  // Proxies Flutterwave with our secret key, so it is rate limited even though
+  // the bank list itself is public information — an open proxy is someone
+  // else's free quota.
+  if (await limited(req, res, "flw-banks", { limit: 30, windowSeconds: 60 })) return;
+
   try {
     const response = await fetch("https://api.flutterwave.com/v3/banks/NG", {
       method: "GET",
@@ -38,11 +50,20 @@ async function handleListBanks(req, res) {
     return res.status(200).json({ banks: (data.data || []).map(b => ({ code: b.code, name: b.name })) });
   } catch (err) {
     console.error("flw-payout (list banks) error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Could not load the bank list." });
   }
 }
 
 async function handleResolveAccount(req, res) {
+  // This returns the NAME on any bank account given its number and bank code.
+  // Left open, it is a free account-holder lookup oracle running on our
+  // Flutterwave quota — useful for building fraud target lists. Only a
+  // signed-in user resolving their own payout account has any business here.
+  const caller = await getCaller(req);
+  if (!caller) return res.status(401).json({ error: "Sign in to verify a bank account" });
+
+  if (await limited(req, res, `flw-resolve:${caller.id}`, { limit: 10, windowSeconds: 60 })) return;
+
   try {
     const { account_number, bank_code } = req.body;
     if (!account_number || !bank_code) return res.status(400).json({ error: "Missing account_number or bank_code" });
@@ -60,7 +81,7 @@ async function handleResolveAccount(req, res) {
     return res.status(200).json({ account_name: data.data.account_name });
   } catch (err) {
     console.error("flw-payout (resolve account) error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Could not verify this account." });
   }
 }
 
@@ -186,7 +207,7 @@ async function handleRequestPayout(req, res) {
 
   } catch (err) {
     console.error("flw-payout (request payout) error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Something went wrong requesting your payout." });
   }
 }
 
@@ -230,6 +251,6 @@ async function handleWebhook(req, res) {
 
   } catch (err) {
     console.error("flw-payout (webhook) error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Webhook processing failed." });
   }
 }

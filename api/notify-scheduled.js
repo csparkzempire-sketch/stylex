@@ -106,15 +106,23 @@ async function runAppointmentReminders(supabase) {
 }
 
 export default async function handler(req, res) {
-  if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Fails CLOSED: if CRON_SECRET isn't configured at all, this must refuse
+  // rather than silently become a publicly-callable endpoint that fans out
+  // push notifications to real users on demand.
+  if (!process.env.CRON_SECRET || req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (!process.env.SUPABASE_SERVICE_KEY) {
+    console.error("notify-scheduled: SUPABASE_SERVICE_KEY is not configured");
+    return res.status(500).json({ error: "Server misconfigured" });
   }
 
   try {
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
       process.env.SUPABASE_URL || "https://utvrujgqzheifblizarw.supabase.co",
-      process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
+      process.env.SUPABASE_SERVICE_KEY
     );
 
     const [rebookNudges, appointmentReminders] = await Promise.all([
@@ -125,6 +133,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ rebookNudges, appointmentReminders });
   } catch (err) {
     console.error("notify-scheduled error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Something went wrong." });
   }
 }

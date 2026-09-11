@@ -1240,10 +1240,12 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     if (!/^\d{10}$/.test(bankAccountNumber)) { setResolveError("Enter a valid 10-digit account number."); return; }
     setResolvingAccount(true);
     try {
-      const res = await fetch("/api/flw-payout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "resolve", account_number: bankAccountNumber, bank_code: bankCode }),
+      // apiFetch, not bare fetch: resolving an account name now requires a
+      // signed-in caller, so the session token has to go with the request.
+      const res = await apiFetch("/api/flw-payout", {
+        action: "resolve",
+        account_number: bankAccountNumber,
+        bank_code: bankCode,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not verify this account");
@@ -1412,10 +1414,9 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     setBizSending(true);
     const businessContext = buildBusinessContext();
     try {
-      const res = await fetch("/api/business-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next.map(m => ({ role: m.role, content: m.text })), businessContext }),
+      const res = await apiFetch("/api/business-assistant", {
+        messages: next.map(m => ({ role: m.role, content: m.text })),
+        businessContext,
       });
       const data = await res.json();
       setBizMessages(m => [...m, { role: "assistant", text: data.reply || "Sorry, I couldn't get a response. Please try again." }]);
@@ -1432,10 +1433,11 @@ function ProDashboard({ user, onClose, onOpenSubscription, repeatCustomerPct = n
     setMarketingResult("");
     setMarketingCopied(false);
     try {
-      const res = await fetch("/api/business-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "marketing", contentType: marketingType, topic: marketingTopic.trim(), businessContext: buildBusinessContext() }),
+      const res = await apiFetch("/api/business-assistant", {
+        mode: "marketing",
+        contentType: marketingType,
+        topic: marketingTopic.trim(),
+        businessContext: buildBusinessContext(),
       });
       const data = await res.json();
       if (!res.ok) { setMarketingError(data.error || "Couldn't generate that. Try again."); setGeneratingMarketing(false); return; }
@@ -1831,7 +1833,7 @@ function BookingModal({ pro, onClose, user }) {
   const [serviceType, setServiceType] = useState(pro.offersShop ? "shop" : "mobile");
   const [bookingRef, setBookingRef] = useState("");
   const [paying, setPaying] = useState(false);
-  const [bookingId, setBookingId] = useState(null);
+  const [, setBookingId] = useState(null);
 
   const today = new Date();
   const days = Array.from({ length: 14 }, (_, i) => { const d = new Date(today); d.setDate(today.getDate() + i); return d; });
@@ -2727,16 +2729,12 @@ function CollabModal({ user, onClose }) {
 
     // Send email notification to founder
     try {
-      await fetch("/api/collab-notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await apiFetch("/api/collab-notify", {
           company_name: company.trim(),
           contact_email: email.trim(),
           request_type: type,
           message: message.trim(),
-        }),
-      });
+        });
     } catch (e) {
       // Email failure shouldn't block the user — request is already saved
       console.error("Email notification failed:", e);
@@ -2812,16 +2810,12 @@ function ReportIssueModal({ user, onClose }) {
     if (!message.trim()) { setError("Please describe what went wrong."); return; }
     setSaving(true);
     try {
-      const res = await fetch("/api/collab-notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await apiFetch("/api/collab-notify", {
           company_name: `App issue — ${user?.name || "Anonymous"}`,
           contact_email: email.trim() || "no-email@stylex.pro",
           request_type: "bug_report",
           message: message.trim(),
-        }),
-      });
+        });
       if (!res.ok) throw new Error("Failed to send");
       setDone(true);
       setTimeout(() => { setDone(false); onClose(); }, 2200);
@@ -3248,6 +3242,7 @@ function CommentsModal({ post, user, onClose, onCountChange }) {
     supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true })
       .then(({ data }) => { setComments(data || []); setLoading(false); });
   };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [post.id]);
 
   const send = async () => {
@@ -3350,8 +3345,6 @@ function HomeScreen({ user, onProfile, realPros = [] }) {
 
   const demoFiltered = activeCategory === "All" ? feedVideos : feedVideos.filter(f => f.pro.category.toLowerCase().includes(activeCategory.toLowerCase()));
   const showDemo = posts.length === 0;
-
-  const isPro = user && user.type === "professional";
 
   const toggleSave = async (post) => {
     if (!user) { alert("Please sign in to save posts."); return; }
@@ -4108,7 +4101,7 @@ function NotificationsSettingsPage({ user, onBack }) {
     if (!user) { setLoading(false); return; }
     supabase.from("profiles").select("notification_settings").eq("id", user.id).maybeSingle()
       .then(({ data }) => {
-        if (data && data.notification_settings) setPrefs({ ...prefs, ...data.notification_settings });
+        if (data && data.notification_settings) setPrefs(p => ({ ...p, ...data.notification_settings }));
         setLoading(false);
       });
   }, [user]);
@@ -4155,7 +4148,7 @@ function PrivacySettingsPage({ user, onBack, onDeleteAccount }) {
   const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
-  const [oldPassword, setOldPassword] = useState("");
+  const [, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwError, setPwError] = useState("");
@@ -4586,16 +4579,12 @@ function HelpSupportPage({ onBack, user }) {
     if (!formMsg.trim()) return;
     setSending(true);
     try {
-      await fetch("/api/collab-notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await apiFetch("/api/collab-notify", {
           company_name: `${subject} — ${formName || "Anonymous"}`,
           contact_email: formEmail || "no-email@stylex.pro",
           request_type: "collaboration",
           message: `FROM: ${formName} (${formEmail})\n\n${formMsg}`,
-        }),
-      });
+        });
       setSent(true);
       setFormMsg("");
       setTimeout(() => { setSent(false); setActiveSection(null); }, 2500);
@@ -4609,16 +4598,12 @@ function HelpSupportPage({ onBack, user }) {
     if (rating === 0) return;
     setSending(true);
     try {
-      await fetch("/api/collab-notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await apiFetch("/api/collab-notify", {
           company_name: `App Rating — ${rating} stars from ${formName || "Anonymous"}`,
           contact_email: formEmail || "no-email@stylex.pro",
           request_type: "collaboration",
           message: `Rating: ${"⭐".repeat(rating)}\n\nFeedback: ${ratingMsg || "No comment"}`,
-        }),
-      });
+        });
       setRatingDone(true);
       setTimeout(() => { setRatingDone(false); setActiveSection(null); setRating(0); setRatingMsg(""); }, 2500);
     } catch (e) {
@@ -5137,6 +5122,7 @@ function ReviewsTab({ proDbId, user, proName }) {
       .then(({ data }) => { setReviews(data || []); setLoading(false); });
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (proDbId) loadReviews(); }, [proDbId]);
 
   const avgRating = reviews.length > 0
@@ -5172,8 +5158,6 @@ function ReviewsTab({ proDbId, user, proName }) {
     loadReviews();
     setTimeout(() => setSubmitted(false), 3000);
   };
-
-  const starColor = (n, selected) => n <= selected ? GOLD : BORDER;
 
   return (
     <div>
@@ -5361,6 +5345,7 @@ function ProProfileScreen({ pro, user, onBack, onBook, navRequest }) {
       supabase.from("waitlist").select("id").eq("client_id", user.id).eq("pro_id", proDbId).maybeSingle()
         .then(({ data }) => setOnWaitlist(!!data));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proDbId, user]);
 
   const toggleWaitlist = async () => {
@@ -5956,7 +5941,10 @@ function StylexApp() {
   const loadPros = async () => {
     const { data } = await supabase
       .from("profiles")
-      .select("id, full_name, category, location, bio, shop_price, mobile_price, offers_shop, offers_mobile, is_available, is_verified, is_boosted, phone, services, avatar_url, username, country, years_experience, languages, certifications, intro_video_url, avg_session_minutes")
+      // `phone` is deliberately not selected: nothing renders it, and anon
+      // loses column access to it in the security migration — selecting it
+      // would fail the whole query for logged-out visitors and empty Explore.
+      .select("id, full_name, category, location, bio, shop_price, mobile_price, offers_shop, offers_mobile, is_available, is_verified, is_boosted, services, avatar_url, username, country, years_experience, languages, certifications, intro_video_url, avg_session_minutes")
       .eq("user_type", "professional");
     if (!data) return;
 
@@ -6121,14 +6109,6 @@ function StylexApp() {
       </div>
     );
   }
-
-  const navItems = [
-    { id: "home", icon: "🏠", label: "Home" },
-    { id: "explore", icon: "🔍", label: "Explore" },
-    { id: "scanner", icon: "✨", label: "Scan" },
-    { id: "marketplace", icon: "🛍️", label: "Shop" },
-    { id: "profile", icon: "👤", label: "Profile" },
-  ];
 
   return (
     <div style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif", width: "100%", minHeight: "100vh", position: "relative" }}>

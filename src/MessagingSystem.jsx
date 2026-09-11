@@ -17,7 +17,6 @@ const TEXT = "#F0EDE8";
 const MUTED = "#888898";
 const GREEN = "#4CAF50";
 const RED = "#FF5555";
-const BLUE = "#5B9BD5";
 
 function Avatar({ initials, size = 40, color = GOLD, img = null }) {
   if (img) return (
@@ -53,6 +52,7 @@ function ConversationsList({ user, onOpen, onNewChat }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, loadConvos)
       .subscribe();
     return () => supabase.removeChannel(channel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
 
   const getOtherPerson = (convo) => {
@@ -135,6 +135,7 @@ function NewChatModal({ user, onClose, onStart }) {
       setSearching(false);
     }, 300);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
   return (
@@ -221,6 +222,7 @@ function ChatScreen({ user, conversation, onBack }) {
       supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id]);
 
   // Auto-scroll to bottom only when a NEW message arrives (not on manual scroll)
@@ -378,7 +380,7 @@ function ChatScreen({ user, conversation, onBack }) {
                   {msg.type === "text" && <div style={{ fontSize: 14, color: mine ? "#0A0A0B" : TEXT, lineHeight: 1.5 }}>{msg.content}</div>}
                   {msg.type === "image" && (
                     <div>
-                      <img src={msg.media_url} alt="photo" style={{ width: "100%", maxWidth: 240, borderRadius: 14, display: "block" }} />
+                      <img src={msg.media_url} alt="" style={{ width: "100%", maxWidth: 240, borderRadius: 14, display: "block" }} />
                       {msg.content && msg.content !== "📷 Photo" && <div style={{ fontSize: 13, color: mine ? "#0A0A0B" : TEXT, padding: "6px 8px 2px" }}>{msg.content}</div>}
                     </div>
                   )}

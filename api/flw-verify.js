@@ -1,10 +1,20 @@
 import webpush from "web-push";
+import { limited } from "../lib/rateLimit.js";
 
-webpush.setVapidDetails(
-  process.env.VAPID_EMAIL,
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
+// Guarded: setVapidDetails throws on missing or malformed values, and at module
+// scope that would take down payment verification itself over a push-notification
+// config problem. Taking money must not depend on push being configured.
+if (process.env.VAPID_EMAIL && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  try {
+    webpush.setVapidDetails(
+      process.env.VAPID_EMAIL,
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+  } catch (err) {
+    console.error("flw-verify: VAPID config rejected, push disabled:", err.message);
+  }
+}
 
 // Server-side source of truth for what each plan costs. The browser sends the
 // checkout amount, so prices can never be trusted from the request — every
@@ -16,6 +26,8 @@ const PLAN_PRICING = {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  if (await limited(req, res, "flw-verify", { limit: 20, windowSeconds: 60 })) return;
 
   try {
     const { tx_id } = req.body;
@@ -50,10 +62,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Unexpected currency" });
     }
 
+    if (!process.env.SUPABASE_SERVICE_KEY) {
+      console.error("flw-verify: SUPABASE_SERVICE_KEY is not configured");
+      return res.status(500).json({ error: "Server misconfigured" });
+    }
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
       process.env.SUPABASE_URL || "https://utvrujgqzheifblizarw.supabase.co",
-      process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
+      process.env.SUPABASE_SERVICE_KEY
     );
 
     // Idempotency — the same transaction must never apply its effect twice,
@@ -164,6 +180,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("flw-verify error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Something went wrong verifying your payment." });
   }
 }

@@ -85,7 +85,8 @@ If the image is unclear or doesn't show what's needed, still return the JSON wit
     }
     res.status(200).json(parsed);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("scan error:", error);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 }
 
@@ -179,7 +180,8 @@ Rules:
 
     res.status(200).json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("scan (full) error:", error);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 }
 

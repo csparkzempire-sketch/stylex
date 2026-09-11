@@ -1,4 +1,5 @@
 import { limited } from "../lib/rateLimit.js";
+import { getCaller } from "../lib/auth.js";
 // ============================================================
 // STYLEX · /api/business-assistant
 // POST { messages, businessContext } -> { reply }
@@ -30,6 +31,16 @@ export default async function handler(req, res) {
   }
 
   if (await limited(req, res, "business-assistant", { limit: 20, windowSeconds: 60 })) return;
+
+  // This is Pro Dashboard-only (it reasons over "this pro's real business
+  // data"), but had no server-side check at all — anyone, signed in or not,
+  // could call it directly and spend Anthropic credits with fabricated
+  // businessContext. Requiring sign-in doesn't change the UI (it's already
+  // only shown inside the logged-in Pro Dashboard) and ties usage to an
+  // accountable identity.
+  const caller = await getCaller(req);
+  if (!caller) return res.status(401).json({ error: "Sign in required" });
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: "API key not configured in Vercel" });
   }
