@@ -1,3 +1,4 @@
+import { limited } from "../lib/rateLimit.js";
 // ============================================================
 // STYLEX · /api/receptionist
 // POST { messages, proContext } -> { reply, action }
@@ -19,6 +20,8 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  if (await limited(req, res, "receptionist", { limit: 20, windowSeconds: 60 })) return;
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: "API key not configured in Vercel" });
   }

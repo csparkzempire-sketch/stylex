@@ -1,3 +1,4 @@
+import { limited } from "../lib/rateLimit.js";
 // api/scan.js — serverless function for the AI Style Scanner.
 // Receives a base64 image + scanType, sends it to Claude's vision API,
 // and returns structured style analysis as JSON.
@@ -5,6 +6,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  if (await limited(req, res, "scan", { limit: 10, windowSeconds: 60 })) return;
 
   // Merged in from the old standalone api/styleimage.js (same request/response
   // shape, unrelated to the vision-scan logic below) to stay under Vercel

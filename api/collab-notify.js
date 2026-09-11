@@ -1,3 +1,4 @@
+import { limited } from "../lib/rateLimit.js";
 import { getCaller } from "../lib/auth.js";
 
 const APP_URL = process.env.APP_URL || "https://app.stylex.pro";
@@ -77,6 +78,8 @@ async function sendInviteEmail(req, res) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  if (await limited(req, res, "collab-notify", { limit: 5, windowSeconds: 300 })) return;
 
   try {
     if (req.body?.kind === "invite") return await sendInviteEmail(req, res);
